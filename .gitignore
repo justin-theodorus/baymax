@@ -1,0 +1,37 @@
+# Environment secrets — NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/public/sw.js
+frontend/public/workbox-*.js
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDEs
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+.mcp.json
+markdowns/
+.pnpm-store/
+.claude/
