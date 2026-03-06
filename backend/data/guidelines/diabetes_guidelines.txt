@@ -1,0 +1,59 @@
+MOH Clinical Practice Guidelines — Type 2 Diabetes Mellitus (Singapore)
+Adapted for Baymax AI Health Companion (Synthetic Summary)
+
+== GLUCOSE TARGETS ==
+
+For most adults with Type 2 diabetes, the recommended HbA1c target is below 7.0% (53 mmol/mol).
+For older patients (70+) or those with multiple comorbidities, a less stringent target of below 8.0% (64 mmol/mol) may be appropriate to minimise hypoglycaemia risk.
+
+Fasting blood glucose target: 4.0 to 7.0 mmol/L
+Postprandial (2 hours after meals) blood glucose target: below 10.0 mmol/L
+
+== METFORMIN GUIDANCE ==
+
+Metformin remains the first-line oral medication for most patients with Type 2 diabetes who have no contraindications.
+It should be taken with meals to reduce gastrointestinal side effects such as nausea or diarrhoea.
+Patients should not stop or adjust their metformin dose without speaking to their doctor.
+If a patient misses a dose, they should take it as soon as they remember unless it is close to the time of the next dose — in that case, skip the missed dose and resume the normal schedule.
+
+== BLOOD GLUCOSE MONITORING ==
+
+Patients on insulin should check blood glucose at least twice daily: fasting in the morning and before bedtime.
+Patients on oral medications alone may monitor less frequently as directed by their doctor.
+If blood glucose is below 4.0 mmol/L (hypoglycaemia), the patient should consume 15g of fast-acting carbohydrate (e.g., 3 glucose tablets, half a cup of fruit juice) and recheck after 15 minutes.
+If blood glucose is above 15.0 mmol/L on two consecutive readings, the patient should contact their doctor or go to a clinic.
+
+== DIETARY ADVICE FOR DIABETES ==
+
+Choose carbohydrates with a lower glycaemic index (GI): brown rice, wholemeal bread, oats, and most vegetables.
+Avoid sugary drinks such as kopi with sugar, teh tarik, soft drinks, and fruit juices.
+Plate method: fill half the plate with non-starchy vegetables, one quarter with lean protein (fish, tofu, chicken without skin), and one quarter with carbohydrates.
+Limit rice to no more than one cup (cooked) per meal.
+Eat regular meals — do not skip meals, especially if taking diabetes medication, as this can cause low blood sugar.
+Choose steamed, baked, or boiled cooking methods over fried options.
+
+== EXERCISE AND LIFESTYLE ==
+
+Aim for at least 150 minutes of moderate-intensity activity per week, such as brisk walking.
+Break up long periods of sitting every 30 minutes with light activity.
+Regular exercise helps lower blood glucose and improve insulin sensitivity.
+Always carry a snack or glucose tablets when exercising to treat potential hypoglycaemia.
+
+== HYPOGLYCAEMIA (LOW BLOOD SUGAR) ==
+
+Symptoms: shaking, sweating, feeling dizzy, hunger, pale skin, confusion.
+Treatment: take 15g fast-acting carbohydrate immediately, wait 15 minutes, retest.
+Severe hypoglycaemia (unable to swallow or unconscious): call 995 immediately.
+
+== FOOT CARE ==
+
+Check feet daily for cuts, blisters, redness, or swelling.
+Wear well-fitting shoes and never walk barefoot.
+Any foot wound that does not heal within a few days should be reviewed by a doctor promptly.
+
+== REGULAR SCREENINGS ==
+
+HbA1c: every 3 months if not at target; every 6 months if stable.
+Kidney function (urine albumin-creatinine ratio): annually.
+Eye examination for diabetic retinopathy: annually.
+Foot examination by healthcare professional: annually.

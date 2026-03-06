@@ -1,0 +1,59 @@
+MOH Clinical Practice Guidelines — Hypertension (Singapore)
+Adapted for Baymax AI Health Companion (Synthetic Summary)
+
+== BLOOD PRESSURE TARGETS ==
+
+For most adults with hypertension: target below 140/90 mmHg.
+For patients with diabetes and hypertension: target below 130/80 mmHg.
+For elderly patients aged 80 and above: a less stringent target of below 150/90 mmHg may be appropriate to reduce the risk of falls from low blood pressure.
+
+== BLOOD PRESSURE MONITORING ==
+
+Home blood pressure monitoring is encouraged for all patients with hypertension.
+Measure blood pressure at the same time each day, preferably in the morning before taking medication.
+Sit quietly for 5 minutes before measuring. Rest your arm at heart level.
+Record both systolic (top number) and diastolic (bottom number) readings.
+Two readings should be taken 1 to 2 minutes apart; record the average.
+A consistent reading above 135/85 mmHg at home should be reported to your doctor.
+
+== AMLODIPINE GUIDANCE ==
+
+Amlodipine is a calcium channel blocker commonly used for hypertension. It is typically taken once daily.
+It may cause ankle swelling (oedema) in some patients — this should be reported to the doctor but is usually not dangerous.
+Amlodipine should be taken at the same time each day. If a dose is missed, take it as soon as remembered, unless it is almost time for the next dose.
+Do not stop taking amlodipine without consulting a doctor, as blood pressure may rise quickly.
+
+== LIFESTYLE MODIFICATIONS ==
+
+Reduce salt intake: aim for less than 5g (one teaspoon) of salt per day total, including in cooking and from sauces.
+Avoid adding soy sauce, fish sauce, or MSG liberally. Choose low-sodium versions where available.
+The DASH diet (rich in fruits, vegetables, whole grains, low-fat dairy, lean proteins) has been shown to lower blood pressure.
+Limit alcohol: no more than 1 standard drink per day for women, 2 for men.
+Quit smoking: smoking raises blood pressure and increases cardiovascular risk significantly.
+Achieve and maintain a healthy weight: even a 5 to 10 kg weight loss can lower blood pressure meaningfully.
+
+== EXERCISE RECOMMENDATIONS ==
+
+Aim for at least 150 minutes per week of moderate aerobic exercise such as brisk walking or swimming.
+Avoid isometric exercises (such as very heavy weightlifting) which can spike blood pressure.
+Exercise in the cooler parts of the day; avoid exercising in extreme heat.
+Stop exercising and rest if you feel chest tightness, breathlessness, or dizziness, and seek medical attention if symptoms persist.
+
+== SALT RESTRICTION IN COMMON SINGAPOREAN FOODS ==
+
+Hawker food is typically high in sodium. To reduce salt:
+- Request less gravy or sauce for dishes like chicken rice, wonton noodles, and laksa.
+- Choose porridge or steamed dishes over heavily seasoned or fried options.
+- Avoid processed meats such as luncheon meat and hot dogs which are high in sodium.
+
+== WHEN TO SEEK URGENT CARE ==
+
+Call 995 or go to A&E immediately if:
+- Blood pressure is above 180/120 mmHg and you have symptoms such as severe headache, chest pain, vision changes, or difficulty breathing (hypertensive emergency).
+- Sudden severe headache, weakness or numbness on one side of the body, difficulty speaking, or confusion (possible stroke).
+
+== REGULAR REVIEWS ==
+
+Blood pressure check: every 1 to 3 months until at target, then every 6 months when stable.
+Kidney function tests (creatinine, eGFR): annually.
+Electrocardiogram (ECG): as directed by doctor.

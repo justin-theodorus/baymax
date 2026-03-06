@@ -1,0 +1,131 @@
+Hawker Food Guide — Glycaemic Impact and Portion Guidance for Diabetic and Hypertensive Patients
+Singapore Context — Adapted for Baymax AI Health Companion (Synthetic Summary)
+
+== HOW TO USE THIS GUIDE ==
+
+This guide provides glycaemic index (GI) impact, estimated sodium content, and healthier ordering tips for common Singapore hawker dishes.
+GI categories: Low (55 or below) | Medium (56–69) | High (70+)
+For diabetics: aim for Low to Medium GI choices and watch portion sizes.
+For hypertensive patients: prioritise dishes with less sauce and request less salt.
+
+== RICE DISHES ==
+
+Chicken Rice (Hainanese Chicken Rice)
+GI Impact: Medium-High (white rice is high GI; steamed chicken is low GI)
+Sodium: High (sauces are very salty)
+Advice: Choose steamed chicken over roasted. Request less rice (half portion). Ask for sauces on the side and use sparingly. Add more cucumber. This is one of the better hawker choices if modified.
+Diabetic-friendly: Yes, with modifications.
+
+Char Siew Rice / Duck Rice
+GI Impact: High
+Sodium: Very High
+Advice: Char siew (BBQ pork) and duck are high in fat and sodium. Limit frequency. Choose lean char siew over fatty cuts. Request less sauce.
+Diabetic-friendly: Occasional only.
+
+Mixed Veg Rice (Cai Fan / Economy Rice)
+GI Impact: Variable (depends on choices)
+Sodium: Medium to High
+Advice: Best option at the hawker for variety. Choose: 1 serving of rice (smaller scoop), 1 to 2 vegetable dishes (steamed/braised preferred), 1 lean protein (steamed fish, tofu, egg). Avoid: deep-fried items, dishes with thick gravy, preserved vegetables (high sodium).
+Diabetic-friendly: Yes — the most customisable option.
+
+== NOODLE DISHES ==
+
+Wonton Noodle Soup (Wonton Mee)
+GI Impact: High (egg noodles are high GI)
+Sodium: Very High (soup broth is salty)
+Advice: Request dry version with sauce on the side to control sodium. Ask for more vegetables. Choose soup version only if you drink a small amount of broth.
+Diabetic-friendly: Moderate — limit portion size.
+
+Laksa
+GI Impact: High
+Sodium: Very High (coconut milk and prawn paste broth)
+Advice: Laksa broth is high in saturated fat (coconut milk) and sodium. Limit frequency to once a week or less. Do not drink the broth. Add extra taugeh (beansprouts) for fibre. Remove half the noodles.
+Diabetic-friendly: Poor choice — high GI and high fat.
+
+Char Kway Teow
+GI Impact: High
+Sodium: Very High
+Advice: Flat rice noodles are high GI, and the dish is typically fried with lard. Portion size is key — request half portion. Ask for less soy sauce and no lard. Having it occasionally (once every 2 weeks) is acceptable for most patients. Pair with a side of vegetables.
+Diabetic-friendly: Poor — have occasionally and in small portions only.
+
+Bak Chor Mee (Minced Meat Noodle)
+GI Impact: High
+Sodium: High
+Advice: Choose the dry version with vinegar rather than chilli sauce to reduce sodium. Ask for less lard. Request more vegetables (taugeh, vegetables).
+Diabetic-friendly: Moderate — choose smaller portion.
+
+Mee Rebus / Mee Siam
+GI Impact: High (thick gravy with potato starch)
+Sodium: High
+Advice: Gravy is high in carbohydrates (potato-based). Ask for less gravy. Add more taugeh and hard-boiled egg for protein.
+Diabetic-friendly: Poor — limit portion and gravy.
+
+Prawn Noodle Soup (Hae Mee)
+GI Impact: Medium-High
+Sodium: Very High
+Advice: Broth is very high in sodium. Eat noodles and prawns; leave most of the broth. Prawns are a good lean protein. Choose yellow noodles over bee hoon (rice vermicelli) for slightly lower GI.
+Diabetic-friendly: Moderate — avoid drinking the broth.
+
+Yong Tau Foo (Soup Version)
+GI Impact: Low-Medium
+Sodium: Medium (depends on soup base and sauce)
+Advice: One of the best hawker choices for diabetic and hypertensive patients. Choose clear soup over spicy laksa base. Load up on tofu items and vegetables. Choose less processed items (fishballs, fu pei) over luncheon meat. Ask for sauce on the side.
+Diabetic-friendly: Excellent choice with modifications.
+
+== BREAKFAST AND SNACK ITEMS ==
+
+Kaya Toast with Soft-Boiled Eggs
+GI Impact: Medium-High (white bread is high GI)
+Sodium: Medium
+Advice: The soft-boiled eggs are a good protein source. Request less kaya (jam) which is high in sugar. Choose wholemeal bread if available. Have with a cup of plain tea without sugar (teh-o kosong or teh-o peng kosong).
+Diabetic-friendly: Moderate — enjoy occasionally, choose smaller portions.
+
+Roti Prata
+GI Impact: High
+Sodium: Medium
+Advice: Prata is made with refined white flour and ghee (clarified butter). High GI and high in saturated fat. Plain prata is better than egg prata in terms of fat. Request less ghee. Limit to once a week.
+Diabetic-friendly: Poor — limit frequency.
+
+Teh Tarik / Kopi
+GI Impact: Very High (when made with full sugar and condensed milk)
+Sodium: Low
+Advice: Standard teh tarik and kopi with sugar and condensed milk contain 5 to 8 teaspoons of sugar. Always order: teh-o kosong (black tea no sugar), kopi-o kosong (black coffee no sugar), or teh/kopi siu dai (less sugar, less milk — still contains some sugar). Avoid teh tarik, milo dinosaur, and bandung.
+Diabetic-friendly: Only if ordered without sugar.
+
+Nasi Lemak
+GI Impact: High
+Sodium: High
+Advice: White rice cooked in coconut milk is high GI and high in saturated fat. The sambal is high in sodium. Choose a small portion of rice. Pick the ikan bilis (anchovies) for protein if eating the traditional version. Add more cucumber. Limit to twice a month.
+Diabetic-friendly: Poor — limit frequency and portion.
+
+Popiah (Fresh Spring Roll)
+GI Impact: Low-Medium
+Sodium: Medium
+Advice: Popiah is one of the better hawker snack options. Filled with turnip (jicama), vegetables, and egg. Avoid the fried version (spring roll / chun juan). Request less sweet sauce.
+Diabetic-friendly: Good choice — prefer fresh over fried version.
+
+Rojak
+GI Impact: Variable
+Sodium: High
+Advice: Rojak sauce (prawn paste, sugar, lime, chilli) is very high in sodium and sugar. The vegetables and tofu are healthy but the sauce negates the benefit. Request less sauce.
+Diabetic-friendly: Moderate — request less sauce.
+
+== DRINKS TO AVOID ==
+
+The following drinks are not recommended for diabetic or hypertensive patients:
+- Teh tarik, teh, kopi (with sugar and condensed/evaporated milk)
+- Milo (unless milo kosong with no sugar added)
+- Sugarcane juice (very high sugar — a single cup may have 8+ teaspoons of sugar)
+- Coconut water (moderate sugar — limit to half a cup)
+- Soft drinks, packet juices, energy drinks
+- Bandung (rose syrup drink — very high sugar)
+
+== GENERAL ORDERING TIPS FOR HAWKER CENTRES ==
+
+1. Always ask for less sauce, less gravy, less salt.
+2. Request steamed, boiled, or grilled options over deep-fried.
+3. Add extra vegetables wherever possible.
+4. Share large portions with family members to reduce total intake.
+5. Drink plain water with your meal instead of sugary drinks.
+6. Choose clear soups over thick, creamy, or coconut-based broths.
+7. For noodle dishes, request half the noodles and extra vegetables.

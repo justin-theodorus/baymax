@@ -37,3 +37,4 @@ python-multipart==0.0.10
 
 # Utilities
 numpy==1.26.4
+tiktoken==0.7.0
