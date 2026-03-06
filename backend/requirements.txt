@@ -15,7 +15,7 @@ anthropic==0.34.2
 openai==1.47.0
 
 # Supabase
-supabase==2.7.4
+supabase>=2.10.0
 
 # Voice
 deepgram-sdk==3.7.7

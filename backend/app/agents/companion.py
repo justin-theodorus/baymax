@@ -148,7 +148,7 @@ def safety_check(state: BaymaxState) -> dict:
     result = safety_gate(response_text)
     if not result["safe"]:
         return {"response_text": result["fallback"]}
-    return {}
+    return {"response_text": response_text}  # must write ≥1 key in LangGraph
 
 
 def build_companion_graph():
