@@ -1,0 +1,5 @@
+features:
+  voice_enabled: true
+  caregiver_telegram_alerts: true
+  clinician_handoff_enabled: true
+  rag_grounding_enabled: true

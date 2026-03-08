@@ -1,0 +1,8 @@
+blocked_patterns:
+  - "you have"
+  - "stop taking"
+  - "increase your dose"
+  - "decrease your dose"
+soften_instead:
+  - "It may help to speak with your doctor or care team."
+  - "Please follow the medication instructions from your clinician."

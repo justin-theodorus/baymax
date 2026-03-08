@@ -1,0 +1,8 @@
+caregiver_alert_triggers:
+  missed_medications_threshold: 2
+  inactivity_hours: 24
+clinician_summary_triggers:
+  repeated_symptom_mentions: 3
+  adherence_drop_percent: 30
+emergency_route:
+  enabled: true

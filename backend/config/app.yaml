@@ -1,0 +1,7 @@
+app:
+  name: "Baymax 2.0 Backend"
+  version: "0.1.0"
+  debug: true
+  api_prefix: "/api"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
