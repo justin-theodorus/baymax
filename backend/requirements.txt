@@ -28,7 +28,7 @@ python-telegram-bot==21.5
 mcp==1.1.0
 
 # Auth / JWT
-PyJWT==2.9.0
+PyJWT[crypto]>=2.10.1
 cryptography==43.0.1
 
 # CORS / HTTP
