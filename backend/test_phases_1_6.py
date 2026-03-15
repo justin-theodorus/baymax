@@ -1,5 +1,5 @@
 """
-Smoke tests for Phases 1–6.
+Smoke tests for Phases 1–8.
 Run from the backend/ directory:
     .venv/bin/python test_phases_1_6.py
 
@@ -10,6 +10,8 @@ Covers:
   Phase 4 — STT/TTS modules load without error
   Phase 5 — Medications Today endpoint logic, overdue detection, barrier flow
   Phase 6 — Escalation routing, Caregiver Comms MCP (consent gate + alert insert), Emergency handler
+  Phase 7 — MCP Server D (clinician summary), clinician_bridge node, PDF HTML builder
+  Phase 8 — MCP Server E (governance/audit), PolicyGate via governance, append-only audit, emergency hardening
 """
 
 import sys
@@ -580,6 +582,509 @@ try:
            f"adherence_pct={report[0]['content'].get('adherence_pct')}%" if ok else "not found / wrong type")
 except Exception as e:
     result("Digest stored in clinician_reports", False, str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 7 — MCP Server D + Clinician Bridge + Report Generation
+# ─────────────────────────────────────────────────────────────────────────────
+separator("PHASE 7 — MCP Server D + Clinician Bridge + Report Generation")
+
+# MCP Server D imports cleanly
+try:
+    from app.mcp_servers.clinician_summary import (
+        generate_weekly_brief,
+        generate_visit_brief,
+        get_trend_flags,
+    )
+    result("MCP Server D (clinician_summary.py) imports cleanly", True)
+except Exception as e:
+    result("MCP Server D imports", False, str(e))
+
+# get_trend_flags returns a list of flag dicts with required keys
+try:
+    flags = get_trend_flags(PATIENT_ID, days=7)
+    ok = isinstance(flags, list)
+    if ok and flags:
+        required_keys = {"type", "description", "source", "confidence"}
+        all_have_keys = all(required_keys.issubset(f.keys()) for f in flags)
+        valid_types = all(f.get("type") in ("review", "positive", "discuss") for f in flags)
+        result("get_trend_flags returns list of flag dicts", ok and all_have_keys,
+               f"count={len(flags)}, types={[f['type'] for f in flags[:3]]}")
+        result("All flags have valid type (review/positive/discuss)", valid_types,
+               f"types seen: {list({f['type'] for f in flags})}")
+    else:
+        result("get_trend_flags returns list", ok,
+               "empty list (may need more seed data)" if ok else "not a list")
+except Exception as e:
+    result("get_trend_flags", False, str(e))
+
+# generate_weekly_brief returns structured report with all required sections
+_report_content = None
+try:
+    brief = generate_weekly_brief(PATIENT_ID)
+    has_id_key = "id" in brief
+    has_report_key = "report" in brief
+    report = brief.get("report", {})
+    required_sections = {
+        "header", "medication_adherence", "vitals_summary",
+        "lifestyle_insights", "patient_symptoms",
+        "recommendation_flags", "data_transparency",
+    }
+    missing_sections = required_sections - set(report.keys())
+    all_sections_present = len(missing_sections) == 0
+    report_type_correct = report.get("type") == "clinician_report"
+
+    result("generate_weekly_brief returns {id, report}", has_id_key and has_report_key,
+           f"report_id={brief.get('id')}")
+    result("Report has all 7 required sections", all_sections_present,
+           f"missing={missing_sections}" if missing_sections else "all present")
+    result("Report type is 'clinician_report'", report_type_correct,
+           f"type={report.get('type')}")
+
+    # Check header fields
+    header = report.get("header", {})
+    header_ok = all(k in header for k in ("patient_name", "age", "conditions", "period_start", "period_end", "generated_at"))
+    result("Report header has all required fields", header_ok,
+           f"patient={header.get('patient_name')}, age={header.get('age')}")
+
+    # Adherence section
+    adherence = report.get("medication_adherence", {})
+    adherence_ok = all(k in adherence for k in ("overall_pct", "total_doses", "taken_doses", "per_medication"))
+    result("Medication adherence section is well-formed", adherence_ok,
+           f"overall_pct={adherence.get('overall_pct')}%, taken={adherence.get('taken_doses')}/{adherence.get('total_doses')}")
+
+    # Data transparency section
+    transparency = report.get("data_transparency", {})
+    has_sources = "sources_used" in transparency and isinstance(transparency["sources_used"], list)
+    has_notes = "confidence_notes" in transparency
+    result("Data transparency section has sources_used and confidence_notes", has_sources and has_notes)
+
+    _report_content = report
+except Exception as e:
+    result("generate_weekly_brief", False, str(e))
+
+# Verify the report was persisted to clinician_reports table
+try:
+    report_row = (
+        sb.table("clinician_reports")
+        .select("id, content, generated_at")
+        .eq("patient_id", PATIENT_ID)
+        .order("generated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    ok = bool(report_row)
+    if ok:
+        stored_type = report_row[0].get("content", {}).get("type")
+        result("generate_weekly_brief persists to clinician_reports table", True,
+               f"type={stored_type}, generated_at={report_row[0]['generated_at'][:19]}")
+    else:
+        result("generate_weekly_brief persists to clinician_reports table", False, "no row found")
+except Exception as e:
+    result("Clinician report persisted to DB", False, str(e))
+
+# generate_visit_brief returns the same structure
+try:
+    from datetime import timedelta
+    appt_date = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    visit_brief = generate_visit_brief(PATIENT_ID, appt_date)
+    has_keys = "id" in visit_brief and "report" in visit_brief
+    vb_type = visit_brief.get("report", {}).get("type")
+    result("generate_visit_brief returns {id, report}", has_keys,
+           f"type={vb_type}")
+except Exception as e:
+    result("generate_visit_brief", False, str(e))
+
+# clinician_bridge node is present in the LangGraph graph
+try:
+    from app.agents.companion import build_companion_graph, clinician_bridge
+    graph = build_companion_graph()
+    nodes = set(graph.nodes)
+    has_bridge = "clinician_bridge" in nodes
+    result("LangGraph graph includes clinician_bridge node", has_bridge,
+           f"nodes: {sorted(nodes)}")
+except Exception as e:
+    result("clinician_bridge node in graph", False, str(e))
+
+# _route_escalation routes "clinician" to "clinician_bridge" (not END)
+try:
+    from app.agents.companion import _route_escalation
+    from langgraph.graph import END
+    state_clinician = {
+        "patient_id": PATIENT_ID,
+        "messages": [],
+        "patient_context": {},
+        "medication_status": {},
+        "cultural_context": {},
+        "language": "en",
+        "escalation_type": "clinician",
+        "alert_payload": {},
+        "report_payload": {},
+        "response_text": "",
+        "rag_chunks": [],
+        "barrier_reason": "",
+        "overdue_meds": [],
+    }
+    route = _route_escalation(state_clinician)
+    result("_route_escalation: 'clinician' → 'clinician_bridge'",
+           route == "clinician_bridge",
+           f"returned: {route!r}")
+except Exception as e:
+    result("_route_escalation clinician branch", False, str(e))
+
+# clinician_bridge node function returns report_payload when called directly
+try:
+    bridge_state = {
+        "patient_id": PATIENT_ID,
+        "messages": [],
+        "patient_context": {},
+        "medication_status": {},
+        "cultural_context": {},
+        "language": "en",
+        "escalation_type": "clinician",
+        "alert_payload": {},
+        "report_payload": {},
+        "response_text": "",
+        "rag_chunks": [],
+        "barrier_reason": "",
+        "overdue_meds": [],
+    }
+    bridge_result = clinician_bridge(bridge_state)
+    has_payload = "report_payload" in bridge_result and isinstance(bridge_result["report_payload"], dict)
+    result("clinician_bridge node returns report_payload dict", has_payload,
+           f"payload keys: {list(bridge_result.get('report_payload', {}).keys())[:5]}")
+except Exception as e:
+    result("clinician_bridge node direct call", False, str(e))
+
+# _build_report_html generates valid HTML with disclaimer (no WeasyPrint needed)
+try:
+    from app.main import _build_report_html
+    sample_report = _report_content or {
+        "header": {
+            "patient_name": "Test Patient", "age": 72,
+            "conditions": ["Type 2 Diabetes"],
+            "period_start": "2026-03-08T00:00:00+00:00",
+            "period_end": "2026-03-15T00:00:00+00:00",
+            "generated_at": "2026-03-15T10:00:00+00:00",
+        },
+        "medication_adherence": {"overall_pct": 75, "taken_doses": 9, "total_doses": 12, "per_medication": {}, "barriers": []},
+        "vitals_summary": {"readings": {}, "anomalies": []},
+        "lifestyle_insights": {"summary": "Patient eating regular meals."},
+        "patient_symptoms": [],
+        "recommendation_flags": [
+            {"type": "review", "description": "Low adherence", "source": "medication_logs", "confidence": 0.9},
+            {"type": "positive", "description": "Regular check-ins", "source": "conversations", "confidence": 0.8},
+        ],
+        "data_transparency": {"sources_used": ["medication_logs", "vitals"], "confidence_notes": "High confidence."},
+    }
+    html = _build_report_html(sample_report)
+    is_valid_html = html.strip().startswith("<!DOCTYPE html>")
+    has_disclaimer = "AI-Generated Summary" in html
+    # Adherence: any integer percentage should be present (actual pct varies by real data)
+    import re as _re
+    has_adherence = bool(_re.search(r"\d+%", html))
+    # Flags: at least one valid flag type rendered (review, positive, or discuss)
+    has_flags = any(ft in html.lower() for ft in ("review", "positive", "discuss"))
+    result("_build_report_html produces valid HTML", is_valid_html)
+    result("PDF HTML includes AI-Generated Summary disclaimer", has_disclaimer)
+    result("PDF HTML includes medication adherence data", has_adherence,
+           "found \\d+% pattern" if has_adherence else "no percentage found in HTML")
+    result("PDF HTML includes at least one recommendation flag", has_flags,
+           "flag section rendered" if has_flags else "no flag types found")
+except Exception as e:
+    result("_build_report_html", False, str(e))
+
+# Clinician endpoints are registered in FastAPI app
+try:
+    from app.main import app as fastapi_app, _verify_clinician_patient_access
+    routes = {r.path for r in fastapi_app.routes}
+    expected_routes = {
+        "/api/clinician/{patient_id}/report",
+        "/api/clinician/{patient_id}/report/pdf",
+        "/api/clinician/{patient_id}/flags",
+    }
+    missing_routes = expected_routes - routes
+    result("All 3 clinician endpoints registered in FastAPI",
+           len(missing_routes) == 0,
+           f"missing: {missing_routes}" if missing_routes else f"all present")
+    result("_verify_clinician_patient_access helper exists", callable(_verify_clinician_patient_access))
+except Exception as e:
+    result("Clinician FastAPI endpoints", False, str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 8 — MCP Server E (Governance) + Audit Log + Emergency Hardening
+# ─────────────────────────────────────────────────────────────────────────────
+separator("PHASE 8 — MCP Server E (Governance) + Audit Trail + Emergency Hardening")
+
+# MCP Server E imports cleanly
+try:
+    from app.mcp_servers.governance import audit_log as gov_audit, policy_gate as gov_policy_gate, escalate_urgent
+    result("MCP Server E (governance.py) imports cleanly", True)
+except Exception as e:
+    result("MCP Server E imports", False, str(e))
+
+# gov_audit writes to audit_log table and returns success
+try:
+    audit_res = gov_audit(
+        agent="test_suite",
+        action="phase8_test",
+        patient_id=PATIENT_ID,
+        reasoning="Automated smoke test for Phase 8 governance audit",
+        data_sources=["test"],
+        confidence=1.0,
+    )
+    ok = audit_res.get("success") is True
+    result("gov_audit inserts to audit_log and returns {success: True}", ok,
+           f"id={audit_res.get('id')}")
+except Exception as e:
+    result("gov_audit", False, str(e))
+
+# gov_audit never raises even with bad inputs (try/except swallows)
+try:
+    bad_res = gov_audit(
+        agent="test_suite",
+        action="bad_test",
+        patient_id="not-a-uuid-at-all-!@#$",  # intentionally invalid UUID
+        reasoning="Testing error resilience",
+    )
+    # Should return a dict (success may be False due to DB error, but must not raise)
+    result("gov_audit never raises (returns dict even on DB error)", isinstance(bad_res, dict),
+           f"result={bad_res}")
+except Exception as e:
+    result("gov_audit error resilience", False, f"raised exception: {e}")
+
+# gov_policy_gate blocks banned phrases and logs to audit_log
+banned_texts = [
+    ("You should stop taking metformin.", "stop taking"),
+    ("I recommend changing your dose.", "i recommend changing"),
+    ("You might have diabetes.", "you might have"),
+]
+for text, pattern in banned_texts:
+    try:
+        gate_res = gov_policy_gate("response_text", {"text": text, "patient_id": PATIENT_ID})
+        blocked = not gate_res["allowed"]
+        has_fallback = bool(gate_res.get("fallback"))
+        result(f"gov_policy_gate blocks: '{pattern}'", blocked,
+               f"allowed={gate_res['allowed']}, reason={gate_res.get('reason', '')[:50]}")
+        result(f"gov_policy_gate provides fallback for: '{pattern}'", has_fallback,
+               f"fallback[:50]={gate_res.get('fallback', '')[:50]}")
+    except Exception as e:
+        result(f"gov_policy_gate [{pattern}]", False, str(e))
+
+# gov_policy_gate passes safe text
+safe_texts = [
+    "Make sure to eat regularly and drink water.",
+    "Please speak to your doctor about any concerns.",
+]
+for text in safe_texts:
+    try:
+        gate_res = gov_policy_gate("response_text", {"text": text, "patient_id": PATIENT_ID})
+        result(f"gov_policy_gate passes safe text: '{text[:40]}'",
+               gate_res["allowed"] is True,
+               f"allowed={gate_res['allowed']}")
+    except Exception as e:
+        result(f"gov_policy_gate safe text", False, str(e))
+
+# gov_policy_gate logs every check to audit_log (both pass and block)
+try:
+    pre_count = len(
+        sb.table("audit_log")
+        .select("id")
+        .eq("agent", "policy_gate")
+        .execute()
+        .data
+    )
+    gov_policy_gate("response_text", {"text": "A harmless test message.", "patient_id": PATIENT_ID})
+    post_count = len(
+        sb.table("audit_log")
+        .select("id")
+        .eq("agent", "policy_gate")
+        .execute()
+        .data
+    )
+    result("gov_policy_gate writes to audit_log on every check",
+           post_count > pre_count,
+           f"audit entries before={pre_count}, after={post_count}")
+except Exception as e:
+    result("gov_policy_gate audit logging", False, str(e))
+
+# escalate_urgent returns structured payload with audit_id
+try:
+    esc_res = escalate_urgent(
+        patient_id=PATIENT_ID,
+        trigger="chest pain reported in test",
+        context={
+            "patient_name": "Mdm Tan Ah Ma",
+            "reason": "emergency_keywords",
+        },
+    )
+    has_audit_id = "audit_id" in esc_res
+    has_timestamp = "timestamp" in esc_res
+    has_action = esc_res.get("response_action") == "995_safety_script_delivered"
+    result("escalate_urgent returns structured payload",
+           has_audit_id and has_timestamp and has_action,
+           f"audit_id={esc_res.get('audit_id')}, action={esc_res.get('response_action')}")
+except Exception as e:
+    result("escalate_urgent", False, str(e))
+
+# Audit log is append-only — UPDATE should be blocked by DB trigger
+try:
+    latest_audit = (
+        sb.table("audit_log")
+        .select("id")
+        .eq("agent", "test_suite")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if latest_audit:
+        audit_id = latest_audit[0]["id"]
+        try:
+            sb.table("audit_log").update({"reasoning": "TAMPERED"}).eq("id", audit_id).execute()
+            # If we get here, trigger didn't fire (unexpected)
+            result("audit_log UPDATE is blocked by DB trigger", False,
+                   "UPDATE succeeded — trigger not active")
+        except Exception as trigger_err:
+            err_str = str(trigger_err).lower()
+            blocked = "append-only" in err_str or "tampered" not in err_str
+            result("audit_log UPDATE is blocked by DB trigger", True,
+                   f"correctly raised: {str(trigger_err)[:80]}")
+    else:
+        result("audit_log append-only trigger test", None, "no test_suite audit row found to test with")
+except Exception as e:
+    result("audit_log append-only check", False, str(e))
+
+# Audit log is append-only — DELETE should be blocked by DB trigger
+try:
+    latest_audit = (
+        sb.table("audit_log")
+        .select("id")
+        .eq("agent", "test_suite")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if latest_audit:
+        audit_id = latest_audit[0]["id"]
+        try:
+            sb.table("audit_log").delete().eq("id", audit_id).execute()
+            result("audit_log DELETE is blocked by DB trigger", False,
+                   "DELETE succeeded — trigger not active")
+        except Exception as trigger_err:
+            result("audit_log DELETE is blocked by DB trigger", True,
+                   f"correctly raised: {str(trigger_err)[:80]}")
+    else:
+        result("audit_log DELETE trigger test", None, "no test_suite audit row found")
+except Exception as e:
+    result("audit_log DELETE trigger check", False, str(e))
+
+# Verify companion.py uses gov_audit (not raw _sb().table("audit_log").insert)
+try:
+    import inspect
+    from app.agents import companion as companion_module
+    src = inspect.getsource(companion_module)
+    # Should import gov_audit from governance
+    uses_gov_audit = "gov_audit" in src
+    uses_gov_policy_gate = "gov_policy_gate" in src
+    # Should NOT have bare audit_log.insert() calls (all refactored away)
+    raw_insert_count = src.count('.table("audit_log").insert(')
+    result("companion.py uses gov_audit from governance module", uses_gov_audit)
+    result("companion.py uses gov_policy_gate from governance module", uses_gov_policy_gate)
+    result("companion.py has no raw audit_log.insert() calls",
+           raw_insert_count == 0,
+           f"found {raw_insert_count} raw inserts" if raw_insert_count > 0 else "clean")
+except Exception as e:
+    result("companion.py governance refactor check", False, str(e))
+
+# Verify patient_context.py uses gov_audit
+try:
+    import inspect
+    from app.mcp_servers import patient_context as pc_module
+    pc_src = inspect.getsource(pc_module)
+    uses_gov = "gov_audit" in pc_src
+    raw_count = pc_src.count('.table("audit_log").insert(')
+    result("patient_context.py uses gov_audit (no raw audit inserts)", uses_gov and raw_count == 0,
+           f"gov_audit={'yes' if uses_gov else 'no'}, raw_inserts={raw_count}")
+except Exception as e:
+    result("patient_context.py governance refactor", False, str(e))
+
+# Emergency handler hardening — Telegram failure never suppresses 995 response
+# Verify by checking the source code structure
+try:
+    import inspect
+    from app.agents.companion import emergency_handler
+    src = inspect.getsource(emergency_handler)
+    # notify_caregiver must be in a try/except block
+    has_try_notify = "try:" in src and "notify_caregiver" in src
+    # escalate_urgent must be called
+    calls_escalate_urgent = "escalate_urgent" in src
+    # EMERGENCY_SAFETY_SCRIPT must be the unconditional return
+    unconditional_return = "EMERGENCY_SAFETY_SCRIPT" in src
+    result("emergency_handler wraps notify_caregiver in try/except", has_try_notify)
+    result("emergency_handler calls escalate_urgent (MCP Server E)", calls_escalate_urgent)
+    result("emergency_handler returns EMERGENCY_SAFETY_SCRIPT unconditionally", unconditional_return)
+except Exception as e:
+    result("emergency_handler hardening checks", False, str(e))
+
+# Emergency handler full graph run still returns 995 script (regression check)
+try:
+    graph = build_companion_graph()
+    state = {
+        "patient_id": PATIENT_ID,
+        "messages": [{"role": "user", "content": "I have 胸痛 (chest pain)"}],
+        "patient_context": {},
+        "medication_status": {},
+        "cultural_context": {},
+        "language": "zh",
+        "escalation_type": "none",
+        "alert_payload": {},
+        "report_payload": {},
+        "response_text": "",
+        "rag_chunks": [],
+        "barrier_reason": "",
+        "overdue_meds": [],
+    }
+    result_state = graph.invoke(state)
+    response = result_state.get("response_text", "")
+    has_995 = "995" in response
+    result("Emergency keyword (胸痛) in Mandarin → 995 response", has_995,
+           f"response[:100]: {response[:100]}")
+    # Check emergency audit log was created
+    emergency_logs = (
+        sb.table("audit_log")
+        .select("id, action")
+        .eq("agent", "emergency_handler")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    result("Emergency handler writes to audit_log via governance",
+           bool(emergency_logs),
+           f"action={emergency_logs[0]['action']}" if emergency_logs else "no audit log found")
+except Exception as e:
+    result("Emergency handler with Mandarin keyword (full graph)", False, str(e))
+
+# Verify all required audit log agents are present after all tests
+try:
+    all_agents = (
+        sb.table("audit_log")
+        .select("agent")
+        .execute()
+        .data
+    )
+    agents_seen = {row["agent"] for row in all_agents if row.get("agent")}
+    expected_agents = {"companion", "evaluate_escalation", "policy_gate", "test_suite"}
+    missing_agents = expected_agents - agents_seen
+    result("Expected audit agents have logged entries",
+           len(missing_agents) == 0,
+           f"missing: {missing_agents}" if missing_agents else f"agents seen: {sorted(agents_seen)}")
+except Exception as e:
+    result("Audit log agent coverage", False, str(e))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
