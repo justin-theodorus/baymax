@@ -9,7 +9,7 @@ interface Alert {
   severity: 'critical' | 'warning' | 'info'
   type: string
   summary: string
-  status: 'active' | 'acknowledged' | 'resolved'
+  status: 'pending' | 'acknowledged' | 'resolved'
   created_at: string
 }
 
@@ -134,8 +134,8 @@ export default function AlertsPage() {
     }
   }
 
-  const activeAlerts = alerts.filter(a => a.status === 'active')
-  const acknowledgedAlerts = alerts.filter(a => a.status !== 'active')
+  const activeAlerts = alerts.filter(a => a.status === 'pending')
+  const acknowledgedAlerts = alerts.filter(a => a.status !== 'pending')
 
   if (isLoading) {
     return (

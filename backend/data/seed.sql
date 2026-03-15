@@ -33,6 +33,11 @@ VALUES
   ('c2b2c3d4-0000-0000-0000-000000000004', 'a1b2c3d4-0000-0000-0000-000000000001', 'Amlodipine', '5mg', 'once daily', ARRAY['08:00'])
 ON CONFLICT (id) DO NOTHING;
 
+-- ── Clear time-sensitive data before re-seeding ───────────────────────────────
+DELETE FROM medication_logs WHERE patient_id = 'a1b2c3d4-0000-0000-0000-000000000001';
+DELETE FROM vitals         WHERE patient_id = 'a1b2c3d4-0000-0000-0000-000000000001';
+DELETE FROM alerts         WHERE patient_id = 'a1b2c3d4-0000-0000-0000-000000000001';
+
 -- ── Medication Logs (7 days) ──────────────────────────────────────────────────
 -- Morning Metformin (all taken)
 INSERT INTO medication_logs (patient_id, medication_id, scheduled_time, taken, taken_at)

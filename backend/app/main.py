@@ -457,7 +457,7 @@ async def caregiver_dashboard(
         sb.table("alerts")
         .select("id, severity, status, summary")
         .eq("patient_id", patient_id)
-        .eq("status", "active")
+        .eq("status", "pending")
         .execute()
         .data
     )

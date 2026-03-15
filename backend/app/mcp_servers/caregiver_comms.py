@@ -133,7 +133,7 @@ def notify_caregiver(patient_id: str, summary: str, urgency: str = "warning") ->
             "severity": urgency,
             "type": "companion_escalation",
             "summary": summary,
-            "status": "active",
+            "status": "pending",
         })
         .execute()
     )
