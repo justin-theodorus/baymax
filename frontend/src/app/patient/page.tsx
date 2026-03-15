@@ -221,7 +221,7 @@ export default function PatientHome() {
   }[voiceState]
 
   return (
-    <main className="min-h-screen bg-sky-50 flex flex-col" style={{ maxHeight: '100dvh' }}>
+    <main className="bg-sky-50 flex flex-col" style={{ height: '100%', overflow: 'hidden' }}>
       {/* Header */}
       <header className="bg-sky-600 text-white px-5 py-4 flex items-center justify-between shrink-0">
         <h1 style={{ fontSize: '26px', fontWeight: 'bold' }}>Baymax</h1>

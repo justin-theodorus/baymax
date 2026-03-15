@@ -10,7 +10,7 @@ from supabase import create_client
 
 from app.config import settings
 from app.models.auth import CurrentUser, UserRole
-from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest
+from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest, BarrierReasonRequest
 
 app = FastAPI(
     title="Baymax 2.0 API",
@@ -131,6 +131,8 @@ async def chat(
         "report_payload": {},
         "response_text": "",
         "rag_chunks": [],
+        "barrier_reason": "",
+        "overdue_meds": [],
     }
 
     result = await asyncio.to_thread(graph.invoke, initial_state)
@@ -277,6 +279,8 @@ async def voice_ws(websocket: WebSocket):
                         "report_payload": {},
                         "response_text": "",
                         "rag_chunks": [],
+                        "barrier_reason": "",
+                        "overdue_meds": [],
                     }
 
                     graph = build_companion_graph()
@@ -328,15 +332,275 @@ async def voice_ws(websocket: WebSocket):
             pass
 
 
-# ── Caregiver / Clinician stubs ───────────────────────────────────────────────
+# ── Medications today ─────────────────────────────────────────────────────────
+
+@app.get("/api/medications/today", tags=["patient"])
+async def medications_today(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("patient")),
+):
+    if patient_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="patient_id mismatch")
+
+    from app.mcp_servers.medication import get_todays_meds
+    from datetime import datetime, timezone
+
+    result = await asyncio.to_thread(get_todays_meds, patient_id)
+
+    # Compute overdue flag for each pending medication
+    now = datetime.now(timezone.utc)
+    pending_with_status = []
+    for med in result.get("pending_today", []):
+        schedule = med.get("schedule", {})
+        times = schedule.get("times", [])
+        overdue = False
+        for t in times:
+            try:
+                hour, minute = map(int, t.split(":"))
+                scheduled_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if scheduled_dt < now:
+                    overdue = True
+                    break
+            except Exception:
+                pass
+        pending_with_status.append({**med, "overdue": overdue})
+
+    return {
+        "medications": result.get("medications", []),
+        "logs": result.get("logs", []),
+        "taken_today": result.get("taken_today", []),
+        "pending_today": pending_with_status,
+    }
+
+
+# ── Barrier reason logging ────────────────────────────────────────────────────
+
+@app.post("/api/medications/barrier", tags=["patient"])
+async def log_barrier_reason(
+    req: BarrierReasonRequest,
+    current_user: CurrentUser = Depends(require_role("patient")),
+):
+    if req.patient_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="patient_id mismatch")
+
+    sb = _sb()
+    # Update the most recent medication_log for this medication (today, not taken)
+    result = (
+        sb.table("medication_logs")
+        .update({"barrier_reason": req.barrier_reason})
+        .eq("patient_id", req.patient_id)
+        .eq("medication_id", req.medication_id)
+        .is_("taken", "false")
+        .order("scheduled_time", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return {"success": True, "updated": len(result.data) > 0}
+
+
+# ── Caregiver endpoints ───────────────────────────────────────────────────────
+
+def _verify_caregiver_patient_access(caregiver: CurrentUser, patient_id: str) -> None:
+    """Verify that this caregiver is linked to the requested patient (via patient_ids array)."""
+    sb = _sb()
+    row = (
+        sb.table("caregivers")
+        .select("id, patient_ids")
+        .eq("id", caregiver.app_user_id)
+        .execute()
+        .data
+    )
+    if not row or patient_id not in (row[0].get("patient_ids") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this patient")
+
 
 @app.get("/api/caregiver/{patient_id}/dashboard", tags=["caregiver"])
 async def caregiver_dashboard(
     patient_id: str,
     current_user: CurrentUser = Depends(require_role("caregiver")),
 ):
-    return {"message": "Caregiver dashboard — coming in Phase 6", "patient_id": patient_id}
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
 
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    week_ago = (now - timedelta(days=7)).isoformat()
+
+    # Medication adherence % over last 7 days (use scheduled_time for filtering)
+    logs = (
+        sb.table("medication_logs")
+        .select("taken")
+        .eq("patient_id", patient_id)
+        .gte("scheduled_time", week_ago)
+        .execute()
+        .data
+    )
+    total = len(logs)
+    taken_count = sum(1 for l in logs if l.get("taken"))
+    adherence_pct = round((taken_count / total * 100) if total > 0 else 0)
+
+    # Last check-in (most recent conversation)
+    last_conv = (
+        sb.table("conversations")
+        .select("created_at")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    last_checkin = last_conv[0]["created_at"] if last_conv else None
+
+    # Active alerts (schema: summary, not message)
+    alerts = (
+        sb.table("alerts")
+        .select("id, severity, status, summary")
+        .eq("patient_id", patient_id)
+        .eq("status", "active")
+        .execute()
+        .data
+    )
+    active_alert_count = len(alerts)
+
+    # Traffic-light level: critical > warning > info > green
+    traffic_light = "green"
+    for alert in alerts:
+        sev = alert.get("severity", "")
+        if sev == "critical":
+            traffic_light = "critical"
+            break
+        elif sev == "warning":
+            traffic_light = "warning"
+        elif sev == "info" and traffic_light == "green":
+            traffic_light = "info"
+
+    return {
+        "patient_id": patient_id,
+        "adherence_pct": adherence_pct,
+        "last_checkin": last_checkin,
+        "active_alert_count": active_alert_count,
+        "traffic_light": traffic_light,
+    }
+
+
+@app.get("/api/caregiver/{patient_id}/alerts", tags=["caregiver"])
+async def caregiver_alerts(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+    limit: int = 20,
+    offset: int = 0,
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    alerts = (
+        sb.table("alerts")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+        .data
+    )
+    return {"alerts": alerts, "total": len(alerts)}
+
+
+@app.post("/api/caregiver/{patient_id}/alerts/{alert_id}/acknowledge", tags=["caregiver"])
+async def acknowledge_alert(
+    patient_id: str,
+    alert_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    result = (
+        sb.table("alerts")
+        .update({"status": "acknowledged"})
+        .eq("id", alert_id)
+        .eq("patient_id", patient_id)
+        .execute()
+    )
+    return {"success": True, "alert_id": alert_id}
+
+
+@app.get("/api/caregiver/{patient_id}/digest", tags=["caregiver"])
+async def get_digest(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    # Fetch latest digest from clinician_reports used as digest storage
+    digest = (
+        sb.table("clinician_reports")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .order("generated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not digest:
+        return {"digest": None, "message": "No digest generated yet"}
+
+    row = digest[0]
+    # Map DB `content` JSONB to expected frontend structure
+    summary_data = row.get("content") or {}
+    return {
+        "digest": {
+            "id": row["id"],
+            "patient_id": row["patient_id"],
+            "period_start": row["period_start"],
+            "period_end": row["period_end"],
+            "summary": summary_data,
+            "generated_at": row["generated_at"],
+        }
+    }
+
+
+@app.post("/api/caregiver/{patient_id}/digest/generate", tags=["caregiver"])
+async def generate_digest(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.caregiver_comms import share_weekly_digest
+
+    result = await asyncio.to_thread(share_weekly_digest, patient_id)
+    return result
+
+
+@app.get("/api/telegram/register", tags=["caregiver"])
+async def telegram_register(
+    caregiver_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    if caregiver_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="caregiver_id mismatch")
+
+    import secrets
+    token = secrets.token_urlsafe(16)
+
+    # Store the pending registration token in Supabase (reuse audit_log for simplicity)
+    _sb().table("audit_log").insert({
+        "agent": "telegram_registration",
+        "action": "pending_registration",
+        "patient_id": None,
+        "reasoning": f"caregiver_id:{caregiver_id}:token:{token}",
+    }).execute()
+
+    bot_username = "BaymaxCareBot"
+    return {
+        "registration_link": f"https://t.me/{bot_username}?start={token}",
+        "message": "Send this link to your caregiver to register for Telegram notifications.",
+    }
+
+
+# ── Clinician stub ────────────────────────────────────────────────────────────
 
 @app.get("/api/clinician/{patient_id}/report", tags=["clinician"])
 async def clinician_report(

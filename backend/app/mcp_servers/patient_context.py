@@ -33,8 +33,8 @@ def fetch_timeline(patient_id: str, days: int = 7) -> dict:
         sb.table("medication_logs")
         .select("*")
         .eq("patient_id", patient_id)
-        .gte("created_at", since)
-        .order("created_at")
+        .gte("scheduled_time", since)
+        .order("scheduled_time")
         .execute()
         .data
     )
@@ -97,6 +97,7 @@ def log_vital(patient_id: str, vital_type: str, value: float) -> dict:
                 "type": vital_type,
                 "value": value,
                 "unit": VITAL_UNITS[vital_type],
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
                 "source": "patient_reported",
             }
         )

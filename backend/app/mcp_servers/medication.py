@@ -54,11 +54,19 @@ def get_todays_meds(patient_id: str) -> dict:
 
     taken_ids = {log["medication_id"] for log in logs if log.get("taken")}
 
+    # Normalise schedule to a consistent dict format regardless of DB column name
+    def _normalise_schedule(med: dict) -> dict:
+        if "schedule_times" in med:
+            med = {**med, "schedule": {"times": med["schedule_times"], "frequency": med.get("frequency", "daily")}}
+        return med
+
+    meds_normalised = [_normalise_schedule(m) for m in meds]
+
     return {
-        "medications": meds,
+        "medications": meds_normalised,
         "logs": logs,
-        "taken_today": [m for m in meds if m["id"] in taken_ids],
-        "pending_today": [m for m in meds if m["id"] not in taken_ids],
+        "taken_today": [m for m in meds_normalised if m["id"] in taken_ids],
+        "pending_today": [m for m in meds_normalised if m["id"] not in taken_ids],
     }
 
 
