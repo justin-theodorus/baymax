@@ -9,6 +9,8 @@ from app.config import settings
 from app.mcp_servers.patient_context import fetch_timeline
 from app.mcp_servers.medication import get_todays_meds, safety_gate, missed_dose_flow
 from app.rag.retrieve import retrieve_guidelines
+from app.mcp_servers.clinician_summary import generate_weekly_brief
+from app.mcp_servers.governance import audit_log as gov_audit, policy_gate as gov_policy_gate
 
 
 class BaymaxState(TypedDict):
@@ -224,9 +226,32 @@ CRITICAL RULES — you must NEVER violate these:
 
 def safety_check(state: BaymaxState) -> dict:
     response_text = state.get("response_text", "")
-    result = safety_gate(response_text)
-    if not result["safe"]:
-        return {"response_text": result["fallback"]}
+    patient_id = state.get("patient_id", "")
+
+    # Run centralized PolicyGate via MCP Server E
+    gate_result = gov_policy_gate("response_text", {
+        "text": response_text,
+        "patient_id": patient_id,
+    })
+
+    if not gate_result["allowed"]:
+        final_text = gate_result.get("fallback", response_text)
+        return {"response_text": final_text}
+
+    # Also run local regex check for any patterns not caught above
+    local_result = safety_gate(response_text)
+    if not local_result["safe"]:
+        return {"response_text": local_result["fallback"]}
+
+    # Audit: log successful response delivery
+    gov_audit(
+        agent="companion",
+        action="response_delivered",
+        patient_id=patient_id,
+        reasoning="Companion agent response passed safety checks and was delivered to patient",
+        data_sources=["rag_guidelines", "medication_logs", "patient_profile"],
+        confidence=0.9,
+    )
     return {"response_text": response_text}
 
 
@@ -371,18 +396,15 @@ def evaluate_escalation(state: BaymaxState) -> dict:
         except Exception:
             pass
 
-    # Log the escalation decision to audit_log
-    try:
-        sb.table("audit_log").insert({
-            "agent": "evaluate_escalation",
-            "action": f"escalation_decision:{escalation_type}",
-            "patient_id": patient_id,
-            "reasoning": alert_payload.get("summary", "No escalation triggered"),
-            "data_sources": ["medication_logs", "vitals", "conversations"],
-            "confidence": 1.0,
-        }).execute()
-    except Exception:
-        pass
+    # Log the escalation decision via MCP Server E (centralized audit)
+    gov_audit(
+        agent="evaluate_escalation",
+        action=f"escalation_decision:{escalation_type}",
+        patient_id=patient_id,
+        reasoning=alert_payload.get("summary", "No escalation triggered"),
+        data_sources=["medication_logs", "vitals", "conversations"],
+        confidence=1.0,
+    )
 
     return {
         "escalation_type": escalation_type,
@@ -422,12 +444,34 @@ def caregiver_liaison(state: BaymaxState) -> dict:
 
     notify_caregiver(patient_id, refined_summary, urgency)
 
+    # Audit: log caregiver notification
+    gov_audit(
+        agent="caregiver_liaison",
+        action=f"caregiver_notified:{urgency}",
+        patient_id=patient_id,
+        reasoning=f"Caregiver alert sent. Urgency: {urgency}. Summary: {refined_summary[:200]}",
+        data_sources=["alert_payload", "medication_logs"],
+        confidence=1.0,
+    )
+
     return {"alert_payload": {**alert_payload, "sent_summary": refined_summary}}
 
 
+EMERGENCY_SAFETY_SCRIPT = (
+    "I am very concerned about you. Please call **995** (Singapore Emergency) immediately! "
+    "If you cannot call, ask someone nearby to help you now. "
+    "我非常担心您。请立即拨打 **995**（新加坡紧急服务）！"
+)
+
+
 def emergency_handler(state: BaymaxState) -> dict:
-    """Handle emergency: ensure 995 safety script is in response and send critical Telegram alert."""
+    """Handle emergency: deliver 995 safety script and send critical Telegram alert.
+
+    The safety script is ALWAYS returned regardless of any downstream failure.
+    Telegram failure must never suppress the 995 response.
+    """
     from app.mcp_servers.caregiver_comms import notify_caregiver
+    from app.mcp_servers.governance import escalate_urgent
 
     patient_id = state.get("patient_id", "")
     alert_payload = state.get("alert_payload", {})
@@ -440,29 +484,54 @@ def emergency_handler(state: BaymaxState) -> dict:
         "Baymax has directed them to call 995. Please contact them immediately."
     )
 
-    if patient_id:
-        notify_caregiver(patient_id, emergency_summary, urgency="critical")
-
-    # Log emergency to audit_log
+    # Caregiver Telegram alert — wrapped so any failure is silent, never surfaces to patient
     try:
-        _sb().table("audit_log").insert({
-            "agent": "emergency_handler",
-            "action": "emergency_escalation",
-            "patient_id": patient_id,
-            "reasoning": f"Emergency keywords detected in patient message: {trigger[:200]}",
-            "data_sources": ["conversation"],
-            "confidence": 1.0,
-        }).execute()
+        if patient_id:
+            notify_caregiver(patient_id, emergency_summary, urgency="critical")
     except Exception:
         pass
 
-    return {
-        "response_text": (
-            "I am very concerned about you. Please call **995** (Singapore Emergency) immediately! "
-            "If you cannot call, ask someone nearby to help you now. "
-            "我非常担心您。请立即拨打 **995**（新加坡紧急服务）！"
-        ),
-    }
+    # Immutable governance audit via MCP Server E
+    try:
+        escalate_urgent(
+            patient_id=patient_id,
+            trigger=trigger,
+            context={
+                "patient_name": patient_name,
+                "reason": "emergency_keywords",
+                "summary": emergency_summary,
+            },
+        )
+    except Exception:
+        pass
+
+    # Safety script is unconditional — returned regardless of above outcomes
+    return {"response_text": EMERGENCY_SAFETY_SCRIPT}
+
+
+def clinician_bridge(state: BaymaxState) -> dict:
+    """Generate a structured clinical summary report when a clinician escalation is triggered."""
+    patient_id = state.get("patient_id", "")
+    if not patient_id:
+        return {}
+
+    try:
+        result = generate_weekly_brief(patient_id)
+        report_payload = result.get("report", {})
+
+        # Audit: log report generation via MCP Server E
+        gov_audit(
+            agent="clinician_bridge",
+            action="clinician_report_generated",
+            patient_id=patient_id,
+            reasoning="Clinician escalation triggered — weekly brief compiled",
+            data_sources=["medication_logs", "vitals", "conversations", "alerts"],
+            confidence=0.9,
+        )
+
+        return {"report_payload": report_payload}
+    except Exception:
+        return {}
 
 
 def _route_escalation(state: BaymaxState) -> str:
@@ -473,8 +542,7 @@ def _route_escalation(state: BaymaxState) -> str:
     if escalation_type in ("caregiver", "both"):
         return "caregiver_liaison"
     if escalation_type == "clinician":
-        # Phase 7 will add clinician_bridge; for now log and end
-        return END
+        return "clinician_bridge"
     return END
 
 
@@ -487,6 +555,7 @@ def build_companion_graph():
     workflow.add_node("evaluate_escalation", evaluate_escalation)
     workflow.add_node("caregiver_liaison", caregiver_liaison)
     workflow.add_node("emergency_handler", emergency_handler)
+    workflow.add_node("clinician_bridge", clinician_bridge)
 
     workflow.set_entry_point("retrieve_context")
     workflow.add_edge("retrieve_context", "companion_respond")
@@ -499,11 +568,13 @@ def build_companion_graph():
         {
             "caregiver_liaison": "caregiver_liaison",
             "emergency_handler": "emergency_handler",
+            "clinician_bridge": "clinician_bridge",
             END: END,
         },
     )
 
     workflow.add_edge("caregiver_liaison", END)
     workflow.add_edge("emergency_handler", END)
+    workflow.add_edge("clinician_bridge", END)
 
     return workflow.compile()

@@ -1,10 +1,13 @@
 import asyncio
+import io
 import json
 import uuid
+from datetime import datetime, timezone, timedelta
 
 import jwt as pyjwt
 from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client
 
@@ -343,7 +346,6 @@ async def medications_today(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="patient_id mismatch")
 
     from app.mcp_servers.medication import get_todays_meds
-    from datetime import datetime, timezone
 
     result = await asyncio.to_thread(get_todays_meds, patient_id)
 
@@ -421,8 +423,6 @@ async def caregiver_dashboard(
 ):
     _verify_caregiver_patient_access(current_user, patient_id)
     sb = _sb()
-
-    from datetime import datetime, timezone, timedelta
 
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
@@ -583,15 +583,17 @@ async def telegram_register(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="caregiver_id mismatch")
 
     import secrets
+    from app.mcp_servers.governance import audit_log as gov_audit
+
     token = secrets.token_urlsafe(16)
 
-    # Store the pending registration token in Supabase (reuse audit_log for simplicity)
-    _sb().table("audit_log").insert({
-        "agent": "telegram_registration",
-        "action": "pending_registration",
-        "patient_id": None,
-        "reasoning": f"caregiver_id:{caregiver_id}:token:{token}",
-    }).execute()
+    # Log pending registration via MCP Server E
+    gov_audit(
+        agent="telegram_registration",
+        action="pending_registration",
+        patient_id=None,
+        reasoning=f"caregiver_id:{caregiver_id}:token:{token}",
+    )
 
     bot_username = "BaymaxCareBot"
     return {
@@ -600,11 +602,221 @@ async def telegram_register(
     }
 
 
-# ── Clinician stub ────────────────────────────────────────────────────────────
+# ── Clinician endpoints ───────────────────────────────────────────────────────
+
+def _verify_clinician_patient_access(clinician: CurrentUser, patient_id: str) -> None:
+    """Verify that this clinician has this patient on their panel."""
+    sb = _sb()
+    row = (
+        sb.table("clinicians")
+        .select("id, patient_ids")
+        .eq("id", clinician.app_user_id)
+        .execute()
+        .data
+    )
+    if not row or patient_id not in (row[0].get("patient_ids") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this patient")
+
 
 @app.get("/api/clinician/{patient_id}/report", tags=["clinician"])
 async def clinician_report(
     patient_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
     current_user: CurrentUser = Depends(require_role("clinician")),
 ):
-    return {"message": "Clinician report — coming in Phase 7", "patient_id": patient_id}
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import generate_weekly_brief
+
+    result = await asyncio.to_thread(generate_weekly_brief, patient_id, start_date, end_date)
+    return {"patient_id": patient_id, **result}
+
+
+@app.get("/api/clinician/{patient_id}/report/pdf", tags=["clinician"])
+async def clinician_report_pdf(
+    patient_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    current_user: CurrentUser = Depends(require_role("clinician")),
+):
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import generate_weekly_brief
+
+    result = await asyncio.to_thread(generate_weekly_brief, patient_id, start_date, end_date)
+    report = result.get("report", {})
+
+    html_content = _build_report_html(report)
+
+    try:
+        import weasyprint
+        pdf_bytes = weasyprint.HTML(string=html_content).write_pdf()
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="PDF export requires weasyprint. Install it with: pip install weasyprint",
+        )
+
+    header = report.get("header", {})
+    patient_name = header.get("patient_name", "patient").replace(" ", "_")
+    filename = f"baymax_report_{patient_name}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/clinician/{patient_id}/flags", tags=["clinician"])
+async def clinician_flags(
+    patient_id: str,
+    days: int = 7,
+    current_user: CurrentUser = Depends(require_role("clinician")),
+):
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import get_trend_flags
+
+    flags = await asyncio.to_thread(get_trend_flags, patient_id, days)
+    return {"patient_id": patient_id, "days": days, "flags": flags}
+
+
+def _build_report_html(report: dict) -> str:
+    """Build an HTML string for PDF export from the structured report dict."""
+    header = report.get("header", {})
+    adherence = report.get("medication_adherence", {})
+    vitals = report.get("vitals_summary", {})
+    lifestyle = report.get("lifestyle_insights", {})
+    symptoms = report.get("patient_symptoms", [])
+    flags = report.get("recommendation_flags", [])
+    transparency = report.get("data_transparency", {})
+
+    # Format dates
+    period_start = header.get("period_start", "")[:10]
+    period_end = header.get("period_end", "")[:10]
+    generated_at = header.get("generated_at", "")[:19].replace("T", " ")
+
+    # Per-medication rows
+    per_med_rows = ""
+    for med_name, data in adherence.get("per_medication", {}).items():
+        barriers = ", ".join(data.get("barriers", [])) or "—"
+        per_med_rows += f"""
+        <tr>
+          <td>{med_name}</td>
+          <td>{data.get('taken', 0)}/{data.get('total', 0)}</td>
+          <td>{data.get('adherence_pct', 0)}%</td>
+          <td>{barriers}</td>
+        </tr>"""
+
+    # Vitals rows
+    vitals_rows = ""
+    for vtype, data in vitals.get("readings", {}).items():
+        label = vtype.replace("_", " ").title()
+        vitals_rows += f"""
+        <tr>
+          <td>{label}</td>
+          <td>{data.get('count', 0)}</td>
+          <td>{data.get('avg', '—')} {data.get('unit', '')}</td>
+          <td>{data.get('min', '—')} – {data.get('max', '—')}</td>
+        </tr>"""
+
+    # Anomaly rows
+    anomaly_rows = ""
+    for anomaly in vitals.get("anomalies", []):
+        anomaly_rows += f"<li style='color:#b91c1c;'>{anomaly.get('description', '')}</li>"
+
+    # Symptoms rows
+    symptom_rows = ""
+    for s in symptoms:
+        symptom_rows += f"""
+        <tr>
+          <td>{s.get('symptom', '').title()}</td>
+          <td>{s.get('frequency', 0)}</td>
+          <td>{(s.get('last_mentioned') or '')[:10]}</td>
+        </tr>"""
+
+    # Recommendation flags
+    flag_items = ""
+    flag_icons = {"review": "⚠", "positive": "✓", "discuss": "📋"}
+    flag_colors = {"review": "#b45309", "positive": "#15803d", "discuss": "#1d4ed8"}
+    for f in flags:
+        ftype = f.get("type", "discuss")
+        icon = flag_icons.get(ftype, "📋")
+        color = flag_colors.get(ftype, "#1d4ed8")
+        confidence_pct = int(f.get("confidence", 0) * 100)
+        flag_items += f"""
+        <div class="flag" style="border-left:4px solid {color}; padding:8px 12px; margin:6px 0; background:#f9fafb;">
+          <span style="color:{color}; font-weight:bold;">{icon} {ftype.upper()}</span>
+          <span style="margin-left:8px;">{f.get('description', '')}</span>
+          <span style="color:#6b7280; font-size:11px; margin-left:8px;">Source: {f.get('source', '')} | Confidence: {confidence_pct}%</span>
+        </div>"""
+
+    conditions = ", ".join(header.get("conditions") or []) or "—"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {{ font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; margin: 0; padding: 24px; }}
+  h1 {{ font-size: 20px; color: #1e1b4b; margin-bottom: 4px; }}
+  h2 {{ font-size: 15px; color: #1e1b4b; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; margin-top: 24px; }}
+  .disclaimer {{ background: #fef3c7; border: 2px solid #f59e0b; padding: 10px 16px; border-radius: 6px;
+                 font-weight: bold; color: #92400e; margin-bottom: 20px; font-size: 13px; }}
+  .meta {{ color: #6b7280; font-size: 12px; margin-bottom: 16px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  th {{ background: #f3f4f6; text-align: left; padding: 7px 10px; font-size: 12px; color: #374151; }}
+  td {{ padding: 6px 10px; border-bottom: 1px solid #f3f4f6; }}
+  .adherence-pct {{ font-size: 28px; font-weight: bold; color: #1e1b4b; }}
+  ul {{ margin: 4px 0; padding-left: 18px; }}
+  li {{ margin: 3px 0; }}
+</style>
+</head>
+<body>
+<h1>BAYMAX PATIENT SUMMARY REPORT</h1>
+<div class="meta">
+  <strong>Patient:</strong> {header.get('patient_name', '—')} &nbsp;|&nbsp;
+  <strong>Age:</strong> {header.get('age', '—')} &nbsp;|&nbsp;
+  <strong>Conditions:</strong> {conditions}<br>
+  <strong>Period:</strong> {period_start} – {period_end} &nbsp;|&nbsp;
+  <strong>Generated:</strong> {generated_at} UTC
+</div>
+<div class="disclaimer">
+  ⚠ AI-Generated Summary — for clinical review only, not a clinical record.
+  All findings require professional clinical judgement.
+</div>
+
+<h2>Medication Adherence</h2>
+<div class="adherence-pct">{adherence.get('overall_pct', 0)}%</div>
+<p>Overall adherence: {adherence.get('taken_doses', 0)} of {adherence.get('total_doses', 0)} doses taken.</p>
+<table>
+  <thead><tr><th>Medication</th><th>Doses Taken</th><th>Adherence</th><th>Barriers</th></tr></thead>
+  <tbody>{per_med_rows or '<tr><td colspan="4">No medication data</td></tr>'}</tbody>
+</table>
+
+<h2>Vitals Summary</h2>
+<table>
+  <thead><tr><th>Vital</th><th>Readings</th><th>Average</th><th>Range</th></tr></thead>
+  <tbody>{vitals_rows or '<tr><td colspan="4">No vitals recorded</td></tr>'}</tbody>
+</table>
+{f'<p><strong>Anomalies:</strong><ul>{anomaly_rows}</ul></p>' if anomaly_rows else ''}
+
+<h2>Lifestyle &amp; Behavioural Insights</h2>
+<p>{lifestyle.get('summary', 'No lifestyle data available.')}</p>
+
+<h2>Patient-Reported Symptoms</h2>
+{f'''<table>
+  <thead><tr><th>Symptom</th><th>Frequency</th><th>Last Mentioned</th></tr></thead>
+  <tbody>{symptom_rows}</tbody>
+</table>''' if symptoms else '<p>No symptoms reported this period.</p>'}
+
+<h2>Recommendation Flags</h2>
+{flag_items if flag_items else '<p>No recommendation flags generated.</p>'}
+
+<h2>Data Transparency</h2>
+<p><strong>Sources used:</strong> {', '.join(transparency.get('sources_used', []))}</p>
+<p>{transparency.get('confidence_notes', '')}</p>
+</body>
+</html>"""
