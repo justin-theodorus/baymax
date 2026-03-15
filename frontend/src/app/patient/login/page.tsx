@@ -5,30 +5,32 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function PatientLogin() {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSent, setIsSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [usePassword, setUsePassword] = useState(false)
   const supabase = createClient()
 
-  async function handleSendLink(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
 
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/patient`,
-      },
-    })
-
-    setIsLoading(false)
-
-    if (authError) {
-      setError(authError.message)
+    if (usePassword) {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      setIsLoading(false)
+      if (authError) { setError(authError.message); return }
+      window.location.href = '/patient'
       return
     }
 
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/patient` },
+    })
+    setIsLoading(false)
+    if (authError) { setError(authError.message); return }
     setIsSent(true)
   }
 
@@ -55,7 +57,7 @@ export default function PatientLogin() {
           <p className="text-2xl text-gray-600">Your Health Companion</p>
         </div>
 
-        <form onSubmit={handleSendLink} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <label className="text-2xl font-semibold text-gray-700" htmlFor="email">
             Your email address
           </label>
@@ -70,9 +72,19 @@ export default function PatientLogin() {
             style={{ minHeight: '64px' }}
           />
 
-          {error && (
-            <p className="text-red-600 text-lg">{error}</p>
+          {usePassword && (
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              required
+              className="w-full px-5 py-4 text-xl border-2 border-sky-300 rounded-2xl focus:outline-none focus:border-sky-500 bg-white"
+              style={{ minHeight: '64px' }}
+            />
           )}
+
+          {error && <p className="text-red-600 text-lg">{error}</p>}
 
           <button
             type="submit"
@@ -80,7 +92,19 @@ export default function PatientLogin() {
             className="w-full py-5 text-2xl font-bold text-white bg-sky-500 rounded-2xl hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             style={{ minHeight: '72px' }}
           >
-            {isLoading ? 'Sending…' : 'Send me a sign-in link'}
+            {isLoading
+              ? 'Signing in…'
+              : usePassword
+              ? 'Sign In'
+              : 'Send me a sign-in link'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setUsePassword(v => !v); setError(null) }}
+            className="text-sky-500 text-base text-center py-2 underline"
+          >
+            {usePassword ? 'Use magic link instead' : 'Use password instead'}
           </button>
         </form>
       </div>
