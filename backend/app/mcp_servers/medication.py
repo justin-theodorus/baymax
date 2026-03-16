@@ -10,8 +10,9 @@ BANNED_PATTERNS = [
     r"stop taking",
     r"increase your dose",
     r"decrease your dose",
-    r"you have [a-z]",
-    r"you might have",
+    # Only flag diagnostic "you have <condition>" — not "you have missed" or "you have a dose"
+    r"you have (?:diabetes|hypertension|high blood pressure|a condition|cancer|a disease|heart disease|kidney disease|an illness)",
+    r"you might have (?:diabetes|hypertension|a condition|cancer|a disease|an illness)",
     r"diagnosed with",
     r"prescribe",
     r"i recommend changing",

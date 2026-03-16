@@ -53,9 +53,19 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // Extract role from JWT custom claims
-  const jwt = user as unknown as { role?: string }
-  const role = (user.app_metadata?.role as string) || (jwt.role as string)
+  // Extract role from the JWT payload (injected by custom_access_token_hook).
+  // getUser() returns the server-side user object which does not include
+  // custom claims — we must decode the access token directly.
+  let role: string | undefined
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    try {
+      const payload = JSON.parse(atob(session.access_token.split('.')[1]))
+      role = payload.app_role as string | undefined
+    } catch {
+      role = undefined
+    }
+  }
 
   if (pathname.startsWith('/patient') && role !== 'patient') {
     return NextResponse.redirect(new URL('/patient/login', request.url))

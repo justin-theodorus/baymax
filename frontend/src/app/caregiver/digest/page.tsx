@@ -164,7 +164,7 @@ export default function DigestPage() {
         <button
           onClick={handleGenerate}
           disabled={isGenerating}
-          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+          style={{ padding: '10px 20px', background: '#2D6A4F', color: 'white', borderRadius: '12px', fontSize: '14px', fontWeight: 600, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', opacity: isGenerating ? 0.5 : 1, minHeight: '44px' }}
         >
           {isGenerating ? (
             <>
@@ -247,12 +247,12 @@ export default function DigestPage() {
           <div className="text-5xl mb-4">📋</div>
           <p className="text-xl font-semibold text-gray-600">No digest yet</p>
           <p className="text-gray-400 mt-2 mb-6">
-            Generate a weekly digest to see an AI-powered summary of your loved one's health.
+            Generate a weekly digest to see an AI-powered summary of your loved one&apos;s health.
           </p>
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-50"
+            style={{ padding: '12px 24px', background: '#2D6A4F', color: 'white', borderRadius: '12px', fontWeight: 600, fontSize: '16px', border: 'none', cursor: 'pointer', opacity: isGenerating ? 0.5 : 1, minHeight: '48px' }}
           >
             {isGenerating ? 'Generating…' : 'Generate First Digest'}
           </button>

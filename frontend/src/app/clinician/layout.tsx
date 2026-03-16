@@ -11,7 +11,7 @@ export default async function ClinicianLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', flexDirection: 'column' }}>
       <ClinicianNav />
       <main className="flex-1">
         {children}

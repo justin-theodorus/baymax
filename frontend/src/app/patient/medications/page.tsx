@@ -14,6 +14,7 @@ interface Medication {
   name: string
   dosage: string
   schedule: MedSchedule
+  notes?: string
   active: boolean
 }
 
@@ -37,11 +38,40 @@ interface MedsData {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+const MED_COLORS = ['#E8634A', '#2D6A4F', '#3B4F7A', '#F4A261', '#52B788', '#9B59B6']
+
+function getMedColor(name: string): string {
+  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  return MED_COLORS[hash % MED_COLORS.length]
+}
+
 function formatTime(timeStr: string): string {
   const [h, m] = timeStr.split(':').map(Number)
   const ampm = h >= 12 ? 'PM' : 'AM'
   const hour = h % 12 || 12
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+function getNextDoseTime(med: Medication): string | null {
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const times = med.schedule?.times ?? []
+  if (!times.length) return null
+
+  for (const t of times) {
+    const [h, m] = t.split(':').map(Number)
+    const mins = h * 60 + m
+    if (mins > currentMinutes) return formatTime(t)
+  }
+  return formatTime(times[0]) // next day
+}
+
+function CheckIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+      <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+    </svg>
+  )
 }
 
 export default function MedicationsPage() {
@@ -98,7 +128,6 @@ export default function MedicationsPage() {
     if (markingId) return
     setMarkingId(med.id)
 
-    // Optimistic update
     setMedsData(prev => {
       if (!prev) return prev
       const now = new Date().toISOString()
@@ -116,15 +145,10 @@ export default function MedicationsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          patient_id: patientId,
-          medication_id: med.id,
-          taken: true,
-        }),
+        body: JSON.stringify({ patient_id: patientId, medication_id: med.id, taken: true }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch {
-      // Revert optimistic update on failure
       await fetchMeds()
     } finally {
       setMarkingId(null)
@@ -136,18 +160,18 @@ export default function MedicationsPage() {
     taken: language === 'zh' ? '已服用' : 'Taken',
     pending: language === 'zh' ? '待服用' : 'Pending',
     overdue: language === 'zh' ? '已过期' : 'Overdue',
-    markTaken: language === 'zh' ? '标记已服用' : 'Mark as taken',
     loading: language === 'zh' ? '加载中…' : 'Loading medications…',
     allDone: language === 'zh' ? '今日所有药物已服用！' : 'All medications taken today!',
     noMeds: language === 'zh' ? '今日无药物' : 'No medications scheduled today',
     scheduledAt: language === 'zh' ? '预定时间' : 'Scheduled',
     takenAt: language === 'zh' ? '服用时间' : 'Taken at',
+    nextDose: language === 'zh' ? '下次服药' : 'Next dose',
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-sky-50 flex items-center justify-center">
-        <p className="text-gray-400 animate-pulse" style={{ fontSize: '22px' }}>{t.loading}</p>
+      <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#9ca3af', fontSize: '22px' }} className="animate-pulse">{t.loading}</p>
       </div>
     )
   }
@@ -156,106 +180,159 @@ export default function MedicationsPage() {
   const takenMeds = medsData?.taken_today ?? []
 
   return (
-    <main className="bg-sky-50 flex flex-col" style={{ height: '100%', overflowY: 'auto' }}>
-      {/* Header */}
-      <header className="bg-sky-600 text-white px-5 py-4 flex items-center justify-between shrink-0">
-        <h1 style={{ fontSize: '26px', fontWeight: 'bold' }}>{t.title}</h1>
-        <div className="flex gap-2">
+    <main style={{ background: '#F7F5F2', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+      {/* Page title row */}
+      <div style={{ padding: '20px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1f2937' }}>{t.title}</h1>
+        <div style={{ display: 'flex', gap: '6px' }}>
           {(['en', 'zh'] as const).map(lang => (
             <button
               key={lang}
               onClick={() => setLanguage(lang)}
-              className={`rounded-xl font-bold transition-colors px-4 py-2 ${
-                language === lang ? 'bg-white text-sky-600' : 'bg-sky-500 text-white border border-sky-300'
-              }`}
-              style={{ minHeight: '48px', minWidth: '64px', fontSize: '18px' }}
+              style={{
+                padding: '4px 14px',
+                borderRadius: '999px',
+                fontSize: '16px',
+                fontWeight: 600,
+                background: language === lang ? '#E8634A' : 'white',
+                color: language === lang ? 'white' : '#E8634A',
+                border: '1.5px solid #E8634A',
+                minHeight: '36px',
+              }}
             >
               {lang === 'en' ? 'EN' : '中文'}
             </button>
           ))}
         </div>
-      </header>
+      </div>
 
-      <div className="flex-1 p-4 space-y-4">
+      <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700" style={{ fontSize: '18px' }}>
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '16px', padding: '16px', color: '#b91c1c', fontSize: '18px' }}>
             {error}
           </div>
         )}
 
-        {/* Pending / Overdue medications */}
+        {/* Pending / Overdue */}
         {pendingMeds.length > 0 && (
           <section>
-            <h2 className="text-gray-500 font-semibold mb-3" style={{ fontSize: '18px' }}>
+            <h2 style={{ color: '#6b7280', fontWeight: 600, fontSize: '18px', marginBottom: '10px' }}>
               {pendingMeds.some(m => m.overdue) ? `⚠ ${t.overdue}` : t.pending}
             </h2>
-            <div className="space-y-3">
-              {pendingMeds.map(med => (
-                <div
-                  key={med.id}
-                  className={`rounded-2xl shadow-sm p-5 flex items-center justify-between gap-4 ${
-                    med.overdue ? 'bg-amber-50 border-2 border-amber-300' : 'bg-white border border-sky-100'
-                  }`}
-                  style={{ minHeight: '80px' }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-800 truncate" style={{ fontSize: '22px' }}>
-                      {med.name}
-                    </p>
-                    <p className="text-gray-500 mt-1" style={{ fontSize: '17px' }}>
-                      {med.dosage}
-                    </p>
-                    <p className={`mt-1 ${med.overdue ? 'text-amber-600 font-medium' : 'text-gray-400'}`} style={{ fontSize: '16px' }}>
-                      {t.scheduledAt}: {med.schedule?.times?.map(formatTime).join(', ') ?? '—'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => markAsTaken(med)}
-                    disabled={markingId === med.id}
-                    className={`shrink-0 rounded-2xl font-bold text-white transition-all active:scale-95 disabled:opacity-50 px-5 py-3 ${
-                      med.overdue ? 'bg-amber-500 hover:bg-amber-600' : 'bg-sky-500 hover:bg-sky-600'
-                    }`}
-                    style={{ minHeight: '56px', minWidth: '120px', fontSize: '18px' }}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {pendingMeds.map(med => {
+                const color = getMedColor(med.name)
+                const nextDose = getNextDoseTime(med)
+                return (
+                  <div
+                    key={med.id}
+                    style={{
+                      background: 'white',
+                      borderRadius: '16px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                      padding: '16px 16px 16px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      minHeight: '80px',
+                      borderLeft: `4px solid ${med.overdue ? '#E63946' : color}`,
+                      overflow: 'hidden',
+                    }}
                   >
-                    {markingId === med.id ? '…' : t.markTaken}
-                  </button>
-                </div>
-              ))}
+                    <div style={{ flex: 1, minWidth: 0, paddingLeft: '16px' }}>
+                      <p style={{ fontWeight: 700, color: '#1f2937', fontSize: '22px', marginBottom: '2px' }}>{med.name}</p>
+                      <p style={{ color: '#6b7280', fontSize: '17px' }}>{med.dosage}</p>
+                      <p style={{ color: med.overdue ? '#E63946' : '#9ca3af', fontSize: '15px', marginTop: '2px' }}>
+                        {t.scheduledAt}: {med.schedule?.times?.map(formatTime).join(', ') ?? '—'}
+                      </p>
+                      {nextDose && !med.overdue && (
+                        <p style={{ color: '#52B788', fontSize: '15px', fontWeight: 500 }}>
+                          {t.nextDose}: {nextDose}
+                        </p>
+                      )}
+                      {med.notes && (
+                        <p style={{ color: '#9ca3af', fontSize: '14px', fontStyle: 'italic', marginTop: '2px' }}>{med.notes}</p>
+                      )}
+                    </div>
+                    {/* Large checkbox button */}
+                    <button
+                      onClick={() => markAsTaken(med)}
+                      disabled={markingId === med.id}
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        background: markingId === med.id ? '#e5e7eb' : (med.overdue ? '#E63946' : color),
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginRight: '8px',
+                        transition: 'transform 0.15s, background 0.2s',
+                        transform: markingId === med.id ? 'scale(0.9)' : 'scale(1)',
+                      }}
+                      aria-label="Mark as taken"
+                    >
+                      {markingId === med.id ? (
+                        <div style={{ width: '20px', height: '20px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%' }} className="animate-spin" />
+                      ) : (
+                        <CheckIcon />
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
 
-        {/* Taken medications */}
+        {/* Taken */}
         {takenMeds.length > 0 && (
           <section>
-            <h2 className="text-gray-500 font-semibold mb-3" style={{ fontSize: '18px' }}>
+            <h2 style={{ color: '#6b7280', fontWeight: 600, fontSize: '18px', marginBottom: '10px' }}>
               ✓ {t.taken}
             </h2>
-            <div className="space-y-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {takenMeds.map(med => {
                 const log = medsData?.logs.find(l => l.medication_id === med.id && l.taken)
                 const takenAt = log?.taken_at
                   ? new Date(log.taken_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   : null
+                const color = getMedColor(med.name)
                 return (
                   <div
                     key={med.id}
-                    className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-center gap-4"
-                    style={{ minHeight: '80px' }}
+                    style={{
+                      background: 'white',
+                      borderRadius: '16px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                      padding: '16px 16px 16px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      minHeight: '72px',
+                      borderLeft: `4px solid ${color}`,
+                      opacity: 0.65,
+                    }}
                   >
-                    <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shrink-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-6 h-6">
-                        <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-700 truncate" style={{ fontSize: '22px' }}>{med.name}</p>
-                      <p className="text-gray-400 mt-1" style={{ fontSize: '17px' }}>{med.dosage}</p>
+                    <div style={{ flex: 1, minWidth: 0, paddingLeft: '16px' }}>
+                      <p style={{ fontWeight: 700, color: '#374151', fontSize: '22px' }}>{med.name}</p>
+                      <p style={{ color: '#9ca3af', fontSize: '17px' }}>{med.dosage}</p>
                       {takenAt && (
-                        <p className="text-green-600 mt-1" style={{ fontSize: '16px' }}>
+                        <p style={{ color: '#52B788', fontSize: '15px', fontWeight: 500, marginTop: '2px' }}>
                           {t.takenAt}: {takenAt}
                         </p>
                       )}
+                    </div>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '50%',
+                      background: '#52B788', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', flexShrink: 0, marginRight: '12px',
+                    }}>
+                      <CheckIcon />
                     </div>
                   </div>
                 )
@@ -266,16 +343,20 @@ export default function MedicationsPage() {
 
         {/* All done */}
         {pendingMeds.length === 0 && takenMeds.length > 0 && (
-          <div className="text-center py-8">
-            <div className="text-5xl mb-3">🎉</div>
-            <p className="text-green-600 font-bold" style={{ fontSize: '22px' }}>{t.allDone}</p>
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <p style={{ color: '#52B788', fontWeight: 700, fontSize: '26px' }}>
+              {language === 'zh' ? '🎉 今日所有药物已服用！' : '🎉 All medications taken today!'}
+            </p>
+            <p style={{ color: '#9ca3af', fontSize: '18px', marginTop: '8px' }}>
+              {language === 'zh' ? '做得好！' : 'Great job!'}
+            </p>
           </div>
         )}
 
         {/* No medications */}
         {pendingMeds.length === 0 && takenMeds.length === 0 && !isLoading && (
-          <div className="text-center py-12">
-            <p className="text-gray-400" style={{ fontSize: '22px' }}>{t.noMeds}</p>
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <p style={{ color: '#9ca3af', fontSize: '22px' }}>{t.noMeds}</p>
           </div>
         )}
       </div>

@@ -26,7 +26,7 @@ export function CaregiverNav() {
   }
 
   return (
-    <header className="bg-emerald-700 text-white shadow-md">
+    <header style={{ background: '#2D6A4F', color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>
       <div className="max-w-4xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
@@ -41,8 +41,8 @@ export function CaregiverNav() {
                 href={link.href}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive(link.href)
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-emerald-100 hover:bg-emerald-600 hover:text-white'
+                    ? 'bg-[#235a3f] text-white'
+                    : 'text-green-100 hover:bg-[#235a3f] hover:text-white'
                 }`}
               >
                 {link.label}
@@ -52,7 +52,7 @@ export function CaregiverNav() {
 
           <button
             onClick={handleSignOut}
-            className="text-emerald-100 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+            className="text-green-100 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-[#235a3f] transition-colors"
           >
             Sign out
           </button>
@@ -66,8 +66,8 @@ export function CaregiverNav() {
               href={link.href}
               className={`shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive(link.href)
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-emerald-100 hover:bg-emerald-600 hover:text-white'
+                  ? 'bg-[#235a3f] text-white'
+                  : 'text-green-100 hover:bg-[#235a3f] hover:text-white'
               }`}
             >
               {link.label}

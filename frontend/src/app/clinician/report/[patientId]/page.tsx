@@ -7,7 +7,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface ReportPageProps {
   params: { patientId: string }
-  searchParams: { view?: string }
 }
 
 async function fetchReport(patientId: string, accessToken: string) {
@@ -33,7 +32,7 @@ async function fetchPatient(patientId: string) {
   return data
 }
 
-export default async function ReportPage({ params, searchParams }: ReportPageProps) {
+export default async function ReportPage({ params }: ReportPageProps) {
   const supabase = createClient()
   const { data: { session } } = await supabase.auth.getSession()
 

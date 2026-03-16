@@ -9,11 +9,35 @@ from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocke
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 from supabase import create_client
 
 from app.config import settings
 from app.models.auth import CurrentUser, UserRole
 from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest, BarrierReasonRequest
+
+
+# ── Caregiver request body models ─────────────────────────────────────────────
+
+class LogVitalRequest(BaseModel):
+    vital_type: str
+    value: float
+    unit: str
+
+
+class AddMedicationRequest(BaseModel):
+    name: str
+    dosage: str
+    schedule: dict
+    notes: str | None = None
+
+
+class EditMedicationRequest(BaseModel):
+    name: str | None = None
+    dosage: str | None = None
+    schedule: dict | None = None
+    notes: str | None = None
+
 
 app = FastAPI(
     title="Baymax 2.0 API",
@@ -63,12 +87,12 @@ def verify_token(
     except pyjwt.InvalidTokenError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
 
-    role: UserRole = payload.get("role", "")
+    role: UserRole = payload.get("app_role", "")
     app_user_id: str = payload.get("app_user_id", "")
     user_id: str = payload.get("sub", "")
 
     if not role:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token missing role claim")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token missing app_role claim")
 
     return CurrentUser(user_id=user_id, role=role, app_user_id=app_user_id)
 
@@ -204,7 +228,7 @@ async def voice_ws(websocket: WebSocket):
 
     try:
         payload = _decode_token(token)
-        role = payload.get("role", "")
+        role = payload.get("app_role", "")
         patient_id = payload.get("app_user_id", "")
         if role != "patient":
             await websocket.close(code=4003)
@@ -600,6 +624,144 @@ async def telegram_register(
         "registration_link": f"https://t.me/{bot_username}?start={token}",
         "message": "Send this link to your caregiver to register for Telegram notifications.",
     }
+
+
+# ── Caregiver vitals endpoints ────────────────────────────────────────────────
+
+@app.get("/api/caregiver/{patient_id}/vitals", tags=["caregiver"])
+async def caregiver_get_vitals(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    rows = (
+        sb.table("vitals")
+        .select("id, vital_type, value, unit, recorded_at, source")
+        .eq("patient_id", patient_id)
+        .gte("recorded_at", since)
+        .order("recorded_at", desc=False)
+        .execute()
+        .data
+    )
+    vitals = [
+        {"id": r["id"], "type": r["vital_type"], "value": r["value"],
+         "unit": r["unit"], "recorded_at": r["recorded_at"], "source": r["source"]}
+        for r in rows
+    ]
+    return {"vitals": vitals}
+
+
+@app.post("/api/caregiver/{patient_id}/vitals", tags=["caregiver"])
+async def caregiver_log_vital(
+    patient_id: str,
+    req: LogVitalRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    vital_row = (
+        sb.table("vitals")
+        .insert({"patient_id": patient_id, "vital_type": req.vital_type,
+                 "value": req.value, "unit": req.unit, "source": "caregiver",
+                 "recorded_at": now_iso})
+        .execute()
+        .data[0]
+    )
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "log_vital",
+         "patient_id": patient_id,
+         "details": {"vital_type": req.vital_type, "value": req.value,
+                     "unit": req.unit, "recorded_at": now_iso},
+         "reasoning": "caregiver logged vital"}
+    ).execute()
+    return {"success": True, "vital": vital_row}
+
+
+# ── Caregiver medication management endpoints ─────────────────────────────────
+
+@app.get("/api/caregiver/{patient_id}/medications", tags=["caregiver"])
+async def caregiver_get_medications(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    medications = (
+        sb.table("medications")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .eq("active", True)
+        .execute()
+        .data
+    )
+    return {"medications": medications}
+
+
+@app.post("/api/caregiver/{patient_id}/medications", tags=["caregiver"])
+async def caregiver_add_medication(
+    patient_id: str,
+    req: AddMedicationRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    med_row = (
+        sb.table("medications")
+        .insert({"patient_id": patient_id, "name": req.name, "dosage": req.dosage,
+                 "schedule": req.schedule, "notes": req.notes, "active": True})
+        .execute()
+        .data[0]
+    )
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "add_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_row["id"], "name": req.name, "dosage": req.dosage},
+         "reasoning": "caregiver added medication"}
+    ).execute()
+    return {"success": True, "medication": med_row}
+
+
+@app.put("/api/caregiver/{patient_id}/medications/{med_id}", tags=["caregiver"])
+async def caregiver_edit_medication(
+    patient_id: str,
+    med_id: str,
+    req: EditMedicationRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    updates: dict = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
+    sb.table("medications").update(updates).eq("id", med_id).eq("patient_id", patient_id).execute()
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "edit_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_id, "updated_fields": list(updates.keys())},
+         "reasoning": f"caregiver edited medication {med_id}"}
+    ).execute()
+    return {"success": True}
+
+
+@app.delete("/api/caregiver/{patient_id}/medications/{med_id}", tags=["caregiver"])
+async def caregiver_remove_medication(
+    patient_id: str,
+    med_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    sb.table("medications").update({"active": False}).eq("id", med_id).eq("patient_id", patient_id).execute()
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "remove_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_id},
+         "reasoning": f"caregiver removed medication {med_id}"}
+    ).execute()
+    return {"success": True}
 
 
 # ── Clinician endpoints ───────────────────────────────────────────────────────

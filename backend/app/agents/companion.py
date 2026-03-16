@@ -69,7 +69,8 @@ def retrieve_context(state: BaymaxState) -> dict:
     if last_user_msg and conditions:
         rag_chunks = retrieve_guidelines(last_user_msg, conditions, top_k=5)
 
-    resolved_language = patient_data.get("language_pref") or state.get("language", "en")
+    # Request language takes priority; fall back to patient's profile preference
+    resolved_language = state.get("language") or patient_data.get("language_pref", "en")
 
     # Detect overdue medications (scheduled time has passed, not yet taken)
     now = datetime.now(timezone.utc)
