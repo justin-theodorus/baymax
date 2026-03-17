@@ -18,3 +18,9 @@ class LogDoseRequest(BaseModel):
     medication_id: str
     taken: bool
     timestamp: str | None = None
+
+
+class BarrierReasonRequest(BaseModel):
+    patient_id: str
+    medication_id: str
+    barrier_reason: str

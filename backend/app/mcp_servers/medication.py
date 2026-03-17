@@ -10,8 +10,9 @@ BANNED_PATTERNS = [
     r"stop taking",
     r"increase your dose",
     r"decrease your dose",
-    r"you have [a-z]",
-    r"you might have",
+    # Only flag diagnostic "you have <condition>" — not "you have missed" or "you have a dose"
+    r"you have (?:diabetes|hypertension|high blood pressure|a condition|cancer|a disease|heart disease|kidney disease|an illness)",
+    r"you might have (?:diabetes|hypertension|a condition|cancer|a disease|an illness)",
     r"diagnosed with",
     r"prescribe",
     r"i recommend changing",
@@ -54,11 +55,19 @@ def get_todays_meds(patient_id: str) -> dict:
 
     taken_ids = {log["medication_id"] for log in logs if log.get("taken")}
 
+    # Normalise schedule to a consistent dict format regardless of DB column name
+    def _normalise_schedule(med: dict) -> dict:
+        if "schedule_times" in med:
+            med = {**med, "schedule": {"times": med["schedule_times"], "frequency": med.get("frequency", "daily")}}
+        return med
+
+    meds_normalised = [_normalise_schedule(m) for m in meds]
+
     return {
-        "medications": meds,
+        "medications": meds_normalised,
         "logs": logs,
-        "taken_today": [m for m in meds if m["id"] in taken_ids],
-        "pending_today": [m for m in meds if m["id"] not in taken_ids],
+        "taken_today": [m for m in meds_normalised if m["id"] in taken_ids],
+        "pending_today": [m for m in meds_normalised if m["id"] not in taken_ids],
     }
 
 

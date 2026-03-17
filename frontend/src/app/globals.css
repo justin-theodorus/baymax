@@ -4,20 +4,23 @@
 
 :root {
   --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
-}
+  --background-rgb: 247, 245, 242;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-rgb: 0, 0, 0;
-  }
+  /* Baymax design tokens */
+  --color-primary-patient: #E8634A;
+  --color-primary-caregiver: #2D6A4F;
+  --color-primary-clinician: #3B4F7A;
+  --color-bg: #F7F5F2;
+  --color-card: #FFFFFF;
+  --color-success: #52B788;
+  --color-warning: #F4A261;
+  --color-critical: #E63946;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-  font-size: 18px; /* minimum body font for elderly users */
+  color: #111827;
+  background: #F7F5F2;
+  font-size: 18px;
 }
 
 /* Ensure minimum touch target size */
@@ -27,4 +30,23 @@ input[type='checkbox'],
 input[type='radio'] {
   min-height: 48px;
   min-width: 48px;
+}
+
+/* Print-friendly styles for clinician report */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-full-width {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  nav,
+  header {
+    display: none !important;
+  }
+  body {
+    background: white;
+    font-size: 13px;
+  }
 }

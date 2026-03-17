@@ -1,16 +1,43 @@
 import asyncio
+import io
 import json
 import uuid
+from datetime import datetime, timezone, timedelta
 
 import jwt as pyjwt
 from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 from supabase import create_client
 
 from app.config import settings
 from app.models.auth import CurrentUser, UserRole
-from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest
+from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest, BarrierReasonRequest
+
+
+# ── Caregiver request body models ─────────────────────────────────────────────
+
+class LogVitalRequest(BaseModel):
+    vital_type: str
+    value: float
+    unit: str
+
+
+class AddMedicationRequest(BaseModel):
+    name: str
+    dosage: str
+    schedule: dict
+    notes: str | None = None
+
+
+class EditMedicationRequest(BaseModel):
+    name: str | None = None
+    dosage: str | None = None
+    schedule: dict | None = None
+    notes: str | None = None
+
 
 app = FastAPI(
     title="Baymax 2.0 API",
@@ -60,12 +87,12 @@ def verify_token(
     except pyjwt.InvalidTokenError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
 
-    role: UserRole = payload.get("role", "")
+    role: UserRole = payload.get("app_role", "")
     app_user_id: str = payload.get("app_user_id", "")
     user_id: str = payload.get("sub", "")
 
     if not role:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token missing role claim")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token missing app_role claim")
 
     return CurrentUser(user_id=user_id, role=role, app_user_id=app_user_id)
 
@@ -131,6 +158,8 @@ async def chat(
         "report_payload": {},
         "response_text": "",
         "rag_chunks": [],
+        "barrier_reason": "",
+        "overdue_meds": [],
     }
 
     result = await asyncio.to_thread(graph.invoke, initial_state)
@@ -199,7 +228,7 @@ async def voice_ws(websocket: WebSocket):
 
     try:
         payload = _decode_token(token)
-        role = payload.get("role", "")
+        role = payload.get("app_role", "")
         patient_id = payload.get("app_user_id", "")
         if role != "patient":
             await websocket.close(code=4003)
@@ -277,6 +306,8 @@ async def voice_ws(websocket: WebSocket):
                         "report_payload": {},
                         "response_text": "",
                         "rag_chunks": [],
+                        "barrier_reason": "",
+                        "overdue_meds": [],
                     }
 
                     graph = build_companion_graph()
@@ -328,19 +359,627 @@ async def voice_ws(websocket: WebSocket):
             pass
 
 
-# ── Caregiver / Clinician stubs ───────────────────────────────────────────────
+# ── Medications today ─────────────────────────────────────────────────────────
+
+@app.get("/api/medications/today", tags=["patient"])
+async def medications_today(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("patient")),
+):
+    if patient_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="patient_id mismatch")
+
+    from app.mcp_servers.medication import get_todays_meds
+
+    result = await asyncio.to_thread(get_todays_meds, patient_id)
+
+    # Compute overdue flag for each pending medication
+    now = datetime.now(timezone.utc)
+    pending_with_status = []
+    for med in result.get("pending_today", []):
+        schedule = med.get("schedule", {})
+        times = schedule.get("times", [])
+        overdue = False
+        for t in times:
+            try:
+                hour, minute = map(int, t.split(":"))
+                scheduled_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if scheduled_dt < now:
+                    overdue = True
+                    break
+            except Exception:
+                pass
+        pending_with_status.append({**med, "overdue": overdue})
+
+    return {
+        "medications": result.get("medications", []),
+        "logs": result.get("logs", []),
+        "taken_today": result.get("taken_today", []),
+        "pending_today": pending_with_status,
+    }
+
+
+# ── Barrier reason logging ────────────────────────────────────────────────────
+
+@app.post("/api/medications/barrier", tags=["patient"])
+async def log_barrier_reason(
+    req: BarrierReasonRequest,
+    current_user: CurrentUser = Depends(require_role("patient")),
+):
+    if req.patient_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="patient_id mismatch")
+
+    sb = _sb()
+    # Update the most recent medication_log for this medication (today, not taken)
+    result = (
+        sb.table("medication_logs")
+        .update({"barrier_reason": req.barrier_reason})
+        .eq("patient_id", req.patient_id)
+        .eq("medication_id", req.medication_id)
+        .is_("taken", "false")
+        .order("scheduled_time", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return {"success": True, "updated": len(result.data) > 0}
+
+
+# ── Caregiver endpoints ───────────────────────────────────────────────────────
+
+def _verify_caregiver_patient_access(caregiver: CurrentUser, patient_id: str) -> None:
+    """Verify that this caregiver is linked to the requested patient (via patient_ids array)."""
+    sb = _sb()
+    row = (
+        sb.table("caregivers")
+        .select("id, patient_ids")
+        .eq("id", caregiver.app_user_id)
+        .execute()
+        .data
+    )
+    if not row or patient_id not in (row[0].get("patient_ids") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this patient")
+
 
 @app.get("/api/caregiver/{patient_id}/dashboard", tags=["caregiver"])
 async def caregiver_dashboard(
     patient_id: str,
     current_user: CurrentUser = Depends(require_role("caregiver")),
 ):
-    return {"message": "Caregiver dashboard — coming in Phase 6", "patient_id": patient_id}
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    now = datetime.now(timezone.utc)
+    week_ago = (now - timedelta(days=7)).isoformat()
+
+    # Medication adherence % over last 7 days (use scheduled_time for filtering)
+    logs = (
+        sb.table("medication_logs")
+        .select("taken")
+        .eq("patient_id", patient_id)
+        .gte("scheduled_time", week_ago)
+        .execute()
+        .data
+    )
+    total = len(logs)
+    taken_count = sum(1 for l in logs if l.get("taken"))
+    adherence_pct = round((taken_count / total * 100) if total > 0 else 0)
+
+    # Last check-in (most recent conversation)
+    last_conv = (
+        sb.table("conversations")
+        .select("created_at")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    last_checkin = last_conv[0]["created_at"] if last_conv else None
+
+    # Active alerts (schema: summary, not message)
+    alerts = (
+        sb.table("alerts")
+        .select("id, severity, status, summary")
+        .eq("patient_id", patient_id)
+        .eq("status", "pending")
+        .execute()
+        .data
+    )
+    active_alert_count = len(alerts)
+
+    # Traffic-light level: critical > warning > info > green
+    traffic_light = "green"
+    for alert in alerts:
+        sev = alert.get("severity", "")
+        if sev == "critical":
+            traffic_light = "critical"
+            break
+        elif sev == "warning":
+            traffic_light = "warning"
+        elif sev == "info" and traffic_light == "green":
+            traffic_light = "info"
+
+    return {
+        "patient_id": patient_id,
+        "adherence_pct": adherence_pct,
+        "last_checkin": last_checkin,
+        "active_alert_count": active_alert_count,
+        "traffic_light": traffic_light,
+    }
+
+
+@app.get("/api/caregiver/{patient_id}/alerts", tags=["caregiver"])
+async def caregiver_alerts(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+    limit: int = 20,
+    offset: int = 0,
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    alerts = (
+        sb.table("alerts")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+        .data
+    )
+    return {"alerts": alerts, "total": len(alerts)}
+
+
+@app.post("/api/caregiver/{patient_id}/alerts/{alert_id}/acknowledge", tags=["caregiver"])
+async def acknowledge_alert(
+    patient_id: str,
+    alert_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    result = (
+        sb.table("alerts")
+        .update({"status": "acknowledged"})
+        .eq("id", alert_id)
+        .eq("patient_id", patient_id)
+        .execute()
+    )
+    return {"success": True, "alert_id": alert_id}
+
+
+@app.get("/api/caregiver/{patient_id}/digest", tags=["caregiver"])
+async def get_digest(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+
+    # Fetch latest weekly digest (filter by type to avoid returning clinician reports)
+    digest = (
+        sb.table("clinician_reports")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .eq("content->>type", "weekly_caregiver_digest")
+        .order("generated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not digest:
+        return {"digest": None, "message": "No digest generated yet"}
+
+    row = digest[0]
+    # Map DB `content` JSONB to expected frontend structure
+    summary_data = row.get("content") or {}
+    return {
+        "digest": {
+            "id": row["id"],
+            "patient_id": row["patient_id"],
+            "period_start": row["period_start"],
+            "period_end": row["period_end"],
+            "summary": summary_data,
+            "generated_at": row["generated_at"],
+        }
+    }
+
+
+@app.post("/api/caregiver/{patient_id}/digest/generate", tags=["caregiver"])
+async def generate_digest(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.caregiver_comms import share_weekly_digest
+
+    result = await asyncio.to_thread(share_weekly_digest, patient_id)
+    return result
+
+
+@app.get("/api/telegram/register", tags=["caregiver"])
+async def telegram_register(
+    caregiver_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    if caregiver_id != current_user.app_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="caregiver_id mismatch")
+
+    import secrets
+    from app.mcp_servers.governance import audit_log as gov_audit
+
+    token = secrets.token_urlsafe(16)
+
+    # Log pending registration via MCP Server E
+    gov_audit(
+        agent="telegram_registration",
+        action="pending_registration",
+        patient_id=None,
+        reasoning=f"caregiver_id:{caregiver_id}:token:{token}",
+    )
+
+    bot_username = "BaymaxCareBot"
+    return {
+        "registration_link": f"https://t.me/{bot_username}?start={token}",
+        "message": "Send this link to your caregiver to register for Telegram notifications.",
+    }
+
+
+# ── Caregiver vitals endpoints ────────────────────────────────────────────────
+
+@app.get("/api/caregiver/{patient_id}/vitals", tags=["caregiver"])
+async def caregiver_get_vitals(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    rows = (
+        sb.table("vitals")
+        .select("id, vital_type, value, unit, recorded_at, source")
+        .eq("patient_id", patient_id)
+        .gte("recorded_at", since)
+        .order("recorded_at", desc=False)
+        .execute()
+        .data
+    )
+    vitals = [
+        {"id": r["id"], "type": r["vital_type"], "value": r["value"],
+         "unit": r["unit"], "recorded_at": r["recorded_at"], "source": r["source"]}
+        for r in rows
+    ]
+    return {"vitals": vitals}
+
+
+@app.post("/api/caregiver/{patient_id}/vitals", tags=["caregiver"])
+async def caregiver_log_vital(
+    patient_id: str,
+    req: LogVitalRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    vital_row = (
+        sb.table("vitals")
+        .insert({"patient_id": patient_id, "vital_type": req.vital_type,
+                 "value": req.value, "unit": req.unit, "source": "caregiver",
+                 "recorded_at": now_iso})
+        .execute()
+        .data[0]
+    )
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "log_vital",
+         "patient_id": patient_id,
+         "details": {"vital_type": req.vital_type, "value": req.value,
+                     "unit": req.unit, "recorded_at": now_iso},
+         "reasoning": "caregiver logged vital"}
+    ).execute()
+    return {"success": True, "vital": vital_row}
+
+
+# ── Caregiver medication management endpoints ─────────────────────────────────
+
+@app.get("/api/caregiver/{patient_id}/medications", tags=["caregiver"])
+async def caregiver_get_medications(
+    patient_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    medications = (
+        sb.table("medications")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .eq("active", True)
+        .execute()
+        .data
+    )
+    return {"medications": medications}
+
+
+@app.post("/api/caregiver/{patient_id}/medications", tags=["caregiver"])
+async def caregiver_add_medication(
+    patient_id: str,
+    req: AddMedicationRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    med_row = (
+        sb.table("medications")
+        .insert({"patient_id": patient_id, "name": req.name, "dosage": req.dosage,
+                 "schedule": req.schedule, "notes": req.notes, "active": True})
+        .execute()
+        .data[0]
+    )
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "add_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_row["id"], "name": req.name, "dosage": req.dosage},
+         "reasoning": "caregiver added medication"}
+    ).execute()
+    return {"success": True, "medication": med_row}
+
+
+@app.put("/api/caregiver/{patient_id}/medications/{med_id}", tags=["caregiver"])
+async def caregiver_edit_medication(
+    patient_id: str,
+    med_id: str,
+    req: EditMedicationRequest,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    updates: dict = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
+    sb.table("medications").update(updates).eq("id", med_id).eq("patient_id", patient_id).execute()
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "edit_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_id, "updated_fields": list(updates.keys())},
+         "reasoning": f"caregiver edited medication {med_id}"}
+    ).execute()
+    return {"success": True}
+
+
+@app.delete("/api/caregiver/{patient_id}/medications/{med_id}", tags=["caregiver"])
+async def caregiver_remove_medication(
+    patient_id: str,
+    med_id: str,
+    current_user: CurrentUser = Depends(require_role("caregiver")),
+):
+    _verify_caregiver_patient_access(current_user, patient_id)
+    sb = _sb()
+    sb.table("medications").update({"active": False}).eq("id", med_id).eq("patient_id", patient_id).execute()
+    sb.table("audit_log").insert(
+        {"actor": current_user.app_user_id, "action": "remove_medication",
+         "patient_id": patient_id,
+         "details": {"medication_id": med_id},
+         "reasoning": f"caregiver removed medication {med_id}"}
+    ).execute()
+    return {"success": True}
+
+
+# ── Clinician endpoints ───────────────────────────────────────────────────────
+
+def _verify_clinician_patient_access(clinician: CurrentUser, patient_id: str) -> None:
+    """Verify that this clinician has this patient on their panel."""
+    sb = _sb()
+    row = (
+        sb.table("clinicians")
+        .select("id, patient_ids")
+        .eq("id", clinician.app_user_id)
+        .execute()
+        .data
+    )
+    if not row or patient_id not in (row[0].get("patient_ids") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this patient")
 
 
 @app.get("/api/clinician/{patient_id}/report", tags=["clinician"])
 async def clinician_report(
     patient_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
     current_user: CurrentUser = Depends(require_role("clinician")),
 ):
-    return {"message": "Clinician report — coming in Phase 7", "patient_id": patient_id}
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import generate_weekly_brief
+
+    result = await asyncio.to_thread(generate_weekly_brief, patient_id, start_date, end_date)
+    return {"patient_id": patient_id, **result}
+
+
+@app.get("/api/clinician/{patient_id}/report/pdf", tags=["clinician"])
+async def clinician_report_pdf(
+    patient_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    current_user: CurrentUser = Depends(require_role("clinician")),
+):
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import generate_weekly_brief
+
+    result = await asyncio.to_thread(generate_weekly_brief, patient_id, start_date, end_date)
+    report = result.get("report", {})
+
+    html_content = _build_report_html(report)
+
+    try:
+        import weasyprint
+        pdf_bytes = weasyprint.HTML(string=html_content).write_pdf()
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="PDF export requires weasyprint. Install it with: pip install weasyprint",
+        )
+
+    header = report.get("header", {})
+    patient_name = header.get("patient_name", "patient").replace(" ", "_")
+    filename = f"baymax_report_{patient_name}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/clinician/{patient_id}/flags", tags=["clinician"])
+async def clinician_flags(
+    patient_id: str,
+    days: int = 7,
+    current_user: CurrentUser = Depends(require_role("clinician")),
+):
+    _verify_clinician_patient_access(current_user, patient_id)
+
+    from app.mcp_servers.clinician_summary import get_trend_flags
+
+    flags = await asyncio.to_thread(get_trend_flags, patient_id, days)
+    return {"patient_id": patient_id, "days": days, "flags": flags}
+
+
+def _build_report_html(report: dict) -> str:
+    """Build an HTML string for PDF export from the structured report dict."""
+    header = report.get("header", {})
+    adherence = report.get("medication_adherence", {})
+    vitals = report.get("vitals_summary", {})
+    lifestyle = report.get("lifestyle_insights", {})
+    symptoms = report.get("patient_symptoms", [])
+    flags = report.get("recommendation_flags", [])
+    transparency = report.get("data_transparency", {})
+
+    # Format dates
+    period_start = header.get("period_start", "")[:10]
+    period_end = header.get("period_end", "")[:10]
+    generated_at = header.get("generated_at", "")[:19].replace("T", " ")
+
+    # Per-medication rows
+    per_med_rows = ""
+    for med_name, data in adherence.get("per_medication", {}).items():
+        barriers = ", ".join(data.get("barriers", [])) or "—"
+        per_med_rows += f"""
+        <tr>
+          <td>{med_name}</td>
+          <td>{data.get('taken', 0)}/{data.get('total', 0)}</td>
+          <td>{data.get('adherence_pct', 0)}%</td>
+          <td>{barriers}</td>
+        </tr>"""
+
+    # Vitals rows
+    vitals_rows = ""
+    for vtype, data in vitals.get("readings", {}).items():
+        label = vtype.replace("_", " ").title()
+        vitals_rows += f"""
+        <tr>
+          <td>{label}</td>
+          <td>{data.get('count', 0)}</td>
+          <td>{data.get('avg', '—')} {data.get('unit', '')}</td>
+          <td>{data.get('min', '—')} – {data.get('max', '—')}</td>
+        </tr>"""
+
+    # Anomaly rows
+    anomaly_rows = ""
+    for anomaly in vitals.get("anomalies", []):
+        anomaly_rows += f"<li style='color:#b91c1c;'>{anomaly.get('description', '')}</li>"
+
+    # Symptoms rows
+    symptom_rows = ""
+    for s in symptoms:
+        symptom_rows += f"""
+        <tr>
+          <td>{s.get('symptom', '').title()}</td>
+          <td>{s.get('frequency', 0)}</td>
+          <td>{(s.get('last_mentioned') or '')[:10]}</td>
+        </tr>"""
+
+    # Recommendation flags
+    flag_items = ""
+    flag_icons = {"review": "⚠", "positive": "✓", "discuss": "📋"}
+    flag_colors = {"review": "#b45309", "positive": "#15803d", "discuss": "#1d4ed8"}
+    for f in flags:
+        ftype = f.get("type", "discuss")
+        icon = flag_icons.get(ftype, "📋")
+        color = flag_colors.get(ftype, "#1d4ed8")
+        confidence_pct = int(f.get("confidence", 0) * 100)
+        flag_items += f"""
+        <div class="flag" style="border-left:4px solid {color}; padding:8px 12px; margin:6px 0; background:#f9fafb;">
+          <span style="color:{color}; font-weight:bold;">{icon} {ftype.upper()}</span>
+          <span style="margin-left:8px;">{f.get('description', '')}</span>
+          <span style="color:#6b7280; font-size:11px; margin-left:8px;">Source: {f.get('source', '')} | Confidence: {confidence_pct}%</span>
+        </div>"""
+
+    conditions = ", ".join(header.get("conditions") or []) or "—"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {{ font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; margin: 0; padding: 24px; }}
+  h1 {{ font-size: 20px; color: #1e1b4b; margin-bottom: 4px; }}
+  h2 {{ font-size: 15px; color: #1e1b4b; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; margin-top: 24px; }}
+  .disclaimer {{ background: #fef3c7; border: 2px solid #f59e0b; padding: 10px 16px; border-radius: 6px;
+                 font-weight: bold; color: #92400e; margin-bottom: 20px; font-size: 13px; }}
+  .meta {{ color: #6b7280; font-size: 12px; margin-bottom: 16px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  th {{ background: #f3f4f6; text-align: left; padding: 7px 10px; font-size: 12px; color: #374151; }}
+  td {{ padding: 6px 10px; border-bottom: 1px solid #f3f4f6; }}
+  .adherence-pct {{ font-size: 28px; font-weight: bold; color: #1e1b4b; }}
+  ul {{ margin: 4px 0; padding-left: 18px; }}
+  li {{ margin: 3px 0; }}
+</style>
+</head>
+<body>
+<h1>BAYMAX PATIENT SUMMARY REPORT</h1>
+<div class="meta">
+  <strong>Patient:</strong> {header.get('patient_name', '—')} &nbsp;|&nbsp;
+  <strong>Age:</strong> {header.get('age', '—')} &nbsp;|&nbsp;
+  <strong>Conditions:</strong> {conditions}<br>
+  <strong>Period:</strong> {period_start} – {period_end} &nbsp;|&nbsp;
+  <strong>Generated:</strong> {generated_at} UTC
+</div>
+<div class="disclaimer">
+  ⚠ AI-Generated Summary — for clinical review only, not a clinical record.
+  All findings require professional clinical judgement.
+</div>
+
+<h2>Medication Adherence</h2>
+<div class="adherence-pct">{adherence.get('overall_pct', 0)}%</div>
+<p>Overall adherence: {adherence.get('taken_doses', 0)} of {adherence.get('total_doses', 0)} doses taken.</p>
+<table>
+  <thead><tr><th>Medication</th><th>Doses Taken</th><th>Adherence</th><th>Barriers</th></tr></thead>
+  <tbody>{per_med_rows or '<tr><td colspan="4">No medication data</td></tr>'}</tbody>
+</table>
+
+<h2>Vitals Summary</h2>
+<table>
+  <thead><tr><th>Vital</th><th>Readings</th><th>Average</th><th>Range</th></tr></thead>
+  <tbody>{vitals_rows or '<tr><td colspan="4">No vitals recorded</td></tr>'}</tbody>
+</table>
+{f'<p><strong>Anomalies:</strong><ul>{anomaly_rows}</ul></p>' if anomaly_rows else ''}
+
+<h2>Lifestyle &amp; Behavioural Insights</h2>
+<p>{lifestyle.get('summary', 'No lifestyle data available.')}</p>
+
+<h2>Patient-Reported Symptoms</h2>
+{f'''<table>
+  <thead><tr><th>Symptom</th><th>Frequency</th><th>Last Mentioned</th></tr></thead>
+  <tbody>{symptom_rows}</tbody>
+</table>''' if symptoms else '<p>No symptoms reported this period.</p>'}
+
+<h2>Recommendation Flags</h2>
+{flag_items if flag_items else '<p>No recommendation flags generated.</p>'}
+
+<h2>Data Transparency</h2>
+<p><strong>Sources used:</strong> {', '.join(transparency.get('sources_used', []))}</p>
+<p>{transparency.get('confidence_notes', '')}</p>
+</body>
+</html>"""

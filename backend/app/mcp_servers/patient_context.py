@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
 from app.config import settings
+from app.mcp_servers.governance import audit_log as gov_audit
 
 VALID_VITAL_TYPES = {
     "blood_glucose",
@@ -33,8 +34,8 @@ def fetch_timeline(patient_id: str, days: int = 7) -> dict:
         sb.table("medication_logs")
         .select("*")
         .eq("patient_id", patient_id)
-        .gte("created_at", since)
-        .order("created_at")
+        .gte("scheduled_time", since)
+        .order("scheduled_time")
         .execute()
         .data
     )
@@ -65,21 +66,16 @@ def fetch_timeline(patient_id: str, days: int = 7) -> dict:
 
 
 def log_symptom(patient_id: str, symptom: str, severity: str) -> dict:
-    """Log a reported symptom to audit_log (vitals table only accepts numeric vital types)."""
-    sb = _sb()
-    result = (
-        sb.table("audit_log")
-        .insert(
-            {
-                "agent": "companion",
-                "action": "symptom_reported",
-                "patient_id": patient_id,
-                "reasoning": f"symptom: {symptom}, severity: {severity}",
-            }
-        )
-        .execute()
+    """Log a reported symptom via the centralized governance audit trail."""
+    result = gov_audit(
+        agent="companion",
+        action="symptom_reported",
+        patient_id=patient_id,
+        reasoning=f"symptom: {symptom}, severity: {severity}",
+        data_sources=["conversation"],
+        confidence=0.8,
     )
-    return {"success": True, "id": result.data[0]["id"] if result.data else None}
+    return {"success": True, "id": result.get("id")}
 
 
 def log_vital(patient_id: str, vital_type: str, value: float) -> dict:
@@ -97,6 +93,7 @@ def log_vital(patient_id: str, vital_type: str, value: float) -> dict:
                 "type": vital_type,
                 "value": value,
                 "unit": VITAL_UNITS[vital_type],
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
                 "source": "patient_reported",
             }
         )
