@@ -29,8 +29,8 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function renderDigestText(text: string) {
-  // Render bullet points nicely
+function renderDigestText(text: string | undefined | null) {
+  if (!text) return null
   const lines = text.split('\n').filter(l => l.trim())
   return lines.map((line, i) => {
     const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-') || line.trim().startsWith('*')

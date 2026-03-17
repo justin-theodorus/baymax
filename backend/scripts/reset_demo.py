@@ -50,10 +50,11 @@ def main() -> None:
 
     # ── 1. Clear time-sensitive tables ────────────────────────────────────────
     tables_to_clear = [
-        ("medication_logs", "patient_id"),
-        ("vitals",          "patient_id"),
-        ("alerts",          "patient_id"),
-        ("conversations",   "patient_id"),
+        ("medication_logs",   "patient_id"),
+        ("vitals",            "patient_id"),
+        ("alerts",            "patient_id"),
+        ("conversations",     "patient_id"),
+        ("clinician_reports", "patient_id"),  # clears stored digests + reports
         # audit_log is append-only by design — never deleted
     ]
 

@@ -557,11 +557,12 @@ async def get_digest(
     _verify_caregiver_patient_access(current_user, patient_id)
     sb = _sb()
 
-    # Fetch latest digest from clinician_reports used as digest storage
+    # Fetch latest weekly digest (filter by type to avoid returning clinician reports)
     digest = (
         sb.table("clinician_reports")
         .select("*")
         .eq("patient_id", patient_id)
+        .eq("content->>type", "weekly_caregiver_digest")
         .order("generated_at", desc=True)
         .limit(1)
         .execute()

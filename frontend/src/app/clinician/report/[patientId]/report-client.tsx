@@ -187,44 +187,14 @@ function VitalsGaugeBlock({
   )
 }
 
-export function PdfExportButton({
-  patientId,
-  accessToken,
-  startDate,
-  endDate,
-}: {
+// Props kept for API compatibility; PDF export uses window.print()
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function PdfExportButton(_props: {
   patientId: string
   accessToken: string
   startDate: string
   endDate: string
 }) {
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleExport = async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (startDate) params.set('start_date', startDate)
-      if (endDate) params.set('end_date', endDate)
-      const res = await fetch(
-        `${API_BASE}/api/clinician/${patientId}/report/pdf?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      )
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `baymax_report_${patientId}_${new Date().toISOString().slice(0, 10)}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      alert('PDF export failed. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handlePrint = () => {
     window.print()
   }
@@ -232,26 +202,11 @@ export function PdfExportButton({
   return (
     <div className="flex items-center gap-2 no-print">
       <button
-        onClick={handleExport}
-        disabled={isLoading}
-        className="flex items-center gap-2 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-        style={{ background: isLoading ? NAVY + '99' : NAVY }}
-      >
-        {isLoading ? (
-          <>
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Generating…
-          </>
-        ) : (
-          <>⬇ Export PDF</>
-        )}
-      </button>
-      <button
         onClick={handlePrint}
-        className="flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border transition-colors"
-        style={{ color: NAVY, borderColor: NAVY + '40', background: NAVY_LIGHT }}
+        className="flex items-center gap-2 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+        style={{ background: NAVY }}
       >
-        🖨 Print / Save PDF
+        ⬇ Export PDF
       </button>
     </div>
   )

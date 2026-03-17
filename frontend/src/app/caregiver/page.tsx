@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -187,57 +187,57 @@ export default function CaregiverDashboard() {
     })
   }, [])
 
-  const fetchAll = useCallback(async () => {
-    setIsLoading(true)
-    setError('')
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const payload = JSON.parse(atob(session.access_token.split('.')[1]))
-      const caregiverId = payload.app_user_id
-
-      const { data: caregiverData } = await supabase
-        .from('caregivers')
-        .select('patient_ids')
-        .eq('id', caregiverId)
-        .single()
-
-      const patientIds: string[] = caregiverData?.patient_ids ?? []
-      if (!patientIds.length) {
-        setError('No patient linked to your account.')
-        return
-      }
-
-      const linkedPatientId = patientIds[0]
-      setPatientId(linkedPatientId)
-
-      const [dashRes, vitalsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/dashboard`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-        fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/vitals`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-      ])
-
-      if (dashRes.ok) {
-        setDashboard(await dashRes.json())
-      }
-      if (vitalsRes.ok) {
-        const vData = await vitalsRes.json()
-        setVitals(vData.vitals ?? [])
-      }
-    } catch {
-      setError('Failed to load dashboard. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [supabase])
-
   useEffect(() => {
-    if (patientId && accessToken) fetchAll()
-  }, [patientId, accessToken, fetchAll])
+    let cancelled = false
+    const run = async () => {
+      setIsLoading(true)
+      setError('')
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session || cancelled) return
+
+        const token = session.access_token
+        setAccessToken(token)
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        const caregiverId = payload.app_user_id
+
+        const { data: caregiverData } = await supabase
+          .from('caregivers')
+          .select('patient_ids')
+          .eq('id', caregiverId)
+          .single()
+
+        const patientIds: string[] = caregiverData?.patient_ids ?? []
+        if (!patientIds.length) {
+          setError('No patient linked to your account.')
+          return
+        }
+
+        const linkedPatientId = patientIds[0]
+        setPatientId(linkedPatientId)
+
+        const [dashRes, vitalsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/dashboard`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/vitals`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ])
+
+        if (!cancelled) {
+          if (dashRes.ok) setDashboard(await dashRes.json())
+          if (vitalsRes.ok) setVitals((await vitalsRes.json()).vitals ?? [])
+        }
+      } catch {
+        if (!cancelled) setError('Failed to load dashboard. Please try again.')
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [])
 
   const fetchMedications = async () => {
     if (!patientId || !accessToken) return
