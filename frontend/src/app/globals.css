@@ -1,29 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 247, 245, 242;
-
-  /* Baymax design tokens */
-  --color-primary-patient: #E8634A;
-  --color-primary-caregiver: #2D6A4F;
-  --color-primary-clinician: #3B4F7A;
-  --color-bg: #F7F5F2;
-  --color-card: #FFFFFF;
-  --color-success: #52B788;
+  --color-primary: #4894fe;
+  --color-dark: #464646;
+  --color-text: #000000;
+  --color-text-secondary: #8f8f8f;
+  --color-text-muted: #b4b4b4;
+  --color-bg: #f5f5f5;
+  --color-card: #ffffff;
   --color-warning: #F4A261;
   --color-critical: #E63946;
+  --color-success: #52B788;
+
+  /* Legacy tokens kept for compatibility */
+  --color-primary-patient: #4894fe;
+  --color-primary-caregiver: #4894fe;
+  --color-primary-clinician: #4894fe;
 }
 
 body {
-  color: #111827;
-  background: #F7F5F2;
-  font-size: 18px;
+  font-family: 'Poppins', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 16px;
 }
 
-/* Ensure minimum touch target size */
 button,
 a,
 input[type='checkbox'],
@@ -32,7 +36,6 @@ input[type='radio'] {
   min-width: 48px;
 }
 
-/* Print-friendly styles for clinician report */
 @media print {
   .no-print {
     display: none !important;

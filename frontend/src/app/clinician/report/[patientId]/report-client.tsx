@@ -5,9 +5,7 @@ import ReactMarkdown from 'react-markdown'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-const NAVY = '#3B4F7A'
-const NAVY_LIGHT = '#EEF1F7'
-const NAVY_TEXT = '#2C3E6B'
+const BLUE = '#4894fe'
 
 // Normal ranges for vitals gauge display
 const VITAL_RANGES: Record<string, { min: number; max: number; borderlineBuffer: number; unit: string }> = {
@@ -79,7 +77,6 @@ function VitalGaugeBar({
   return (
     <div className="mt-1.5">
       <div className="relative h-3 rounded-full overflow-hidden" style={{ background: '#e5e7eb' }}>
-        {/* Normal range band */}
         <div
           className="absolute top-0 h-full opacity-30"
           style={{
@@ -88,7 +85,6 @@ function VitalGaugeBar({
             background: '#16a34a',
           }}
         />
-        {/* Value fill */}
         <div
           className="absolute top-0 h-full rounded-full"
           style={{
@@ -109,7 +105,6 @@ function VitalGaugeBar({
   )
 }
 
-// Visual stat cards with color indicators and gauges
 function VitalsGaugeBlock({
   readings,
 }: {
@@ -187,7 +182,6 @@ function VitalsGaugeBlock({
   )
 }
 
-// Props kept for API compatibility; PDF export uses window.print()
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function PdfExportButton(_props: {
   patientId: string
@@ -203,10 +197,13 @@ export function PdfExportButton(_props: {
     <div className="flex items-center gap-2 no-print">
       <button
         onClick={handlePrint}
-        className="flex items-center gap-2 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-        style={{ background: NAVY }}
+        className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-3 rounded-[15px] transition-colors"
+        style={{ background: BLUE, minHeight: '0', minWidth: '0' }}
       >
-        ⬇ Export PDF
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+          <path fillRule="evenodd" d="M12 2.25a.75.75 0 01.75.75v11.69l3.22-3.22a.75.75 0 111.06 1.06l-4.5 4.5a.75.75 0 01-1.06 0l-4.5-4.5a.75.75 0 111.06-1.06l3.22 3.22V3a.75.75 0 01.75-.75zm-9 13.5a.75.75 0 01.75.75v2.25a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5V16.5a.75.75 0 011.5 0v2.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V16.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
+        </svg>
+        Export PDF
       </button>
     </div>
   )
@@ -247,47 +244,49 @@ export function DateRangeControls({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 no-print">
-        <p className="text-sm font-medium text-gray-600 mb-3">Custom Date Range</p>
+    <div className="flex flex-col gap-4">
+      {/* Date range card */}
+      <div className="bg-[#4894fe] rounded-[20px] p-6 no-print">
+        <p className="text-white text-xs font-semibold uppercase tracking-wider opacity-70 mb-3">Custom Date Range</p>
+        <p className="text-white text-xl font-bold mb-4">
+          {startDate && endDate
+            ? `${startDate} — ${endDate}`
+            : 'Select date range'}
+        </p>
         <div className="flex flex-wrap gap-3 items-end">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">From</label>
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-white text-xs opacity-70">From</label>
             <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="bg-[rgba(255,255,255,0.2)] text-white rounded-[10px] px-3 py-2 text-sm outline-none border border-[rgba(255,255,255,0.3)] focus:border-white placeholder:text-white/50"
+              style={{ minHeight: '0', colorScheme: 'dark' }}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">To</label>
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-white text-xs opacity-70">To</label>
             <input
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="bg-[rgba(255,255,255,0.2)] text-white rounded-[10px] px-3 py-2 text-sm outline-none border border-[rgba(255,255,255,0.3)] focus:border-white"
+              style={{ minHeight: '0', colorScheme: 'dark' }}
             />
           </div>
           <button
             onClick={handleFetch}
             disabled={isRefreshing}
-            className="text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-            style={{ background: NAVY_LIGHT, color: NAVY_TEXT }}
+            className="bg-white text-[#4894fe] text-sm font-semibold px-5 py-2 rounded-[10px] disabled:opacity-50"
+            style={{ minHeight: '0', minWidth: '0' }}
           >
             {isRefreshing ? 'Loading…' : 'Apply'}
           </button>
-          <PdfExportButton
-            patientId={patientId}
-            accessToken={accessToken}
-            startDate={startDate}
-            endDate={endDate}
-          />
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-sm">
           {error}
         </div>
       )}
@@ -307,11 +306,11 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
   const vitalsReadings = (vitals.readings ?? {}) as Record<string, Record<string, unknown>>
 
   return (
-    <div className="space-y-5 print-full-width">
+    <div className="flex flex-col gap-5 print-full-width">
       {/* Medication Adherence */}
       <ReportCard title="Medication Adherence" icon="💊">
         <div className="flex items-baseline gap-2 mb-4">
-          <span style={{ fontSize: '56px', fontWeight: 700, color: NAVY, lineHeight: 1 }}>
+          <span style={{ fontSize: '56px', fontWeight: 700, color: BLUE, lineHeight: 1 }}>
             {String(adherence.overall_pct ?? 0)}%
           </span>
           <span className="text-gray-400 text-sm">
@@ -323,7 +322,7 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
             className="h-2.5 rounded-full transition-all"
             style={{
               width: `${Math.min(Number(adherence.overall_pct ?? 0), 100)}%`,
-              background: NAVY,
+              background: BLUE,
             }}
           />
         </div>
@@ -370,7 +369,6 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
           ))}
         </div>
 
-        {/* Vitals at a Glance gauge block */}
         {Object.keys(vitalsReadings).length > 0 && (
           <VitalsGaugeBlock readings={vitalsReadings} />
         )}
@@ -416,7 +414,7 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
                 <div className="text-right">
                   <span
                     className="text-xs px-2.5 py-1 rounded-full font-medium"
-                    style={{ background: NAVY_LIGHT, color: NAVY_TEXT }}
+                    style={{ background: '#eef6ff', color: BLUE }}
                   >
                     {String(s.frequency ?? 1)}x
                   </span>
@@ -432,7 +430,7 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
         )}
       </ReportCard>
 
-      {/* Recommendation Flags — hidden entirely when empty */}
+      {/* Recommendation Flags */}
       {flags.length === 0 ? null : (
         <ReportCard title="Recommendation Flags" icon="🚩">
           <div className="space-y-3">
@@ -446,9 +444,7 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
                 >
                   <span className="text-lg leading-none mt-0.5">{flagConfig.icon}</span>
                   <div className="flex-1">
-                    <p
-                      className={`text-xs font-bold uppercase tracking-wide mb-1 ${flagConfig.label}`}
-                    >
+                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${flagConfig.label}`}>
                       {ftype}
                     </p>
                     <p className={`text-sm ${flagConfig.text}`}>{String(f.description ?? '')}</p>
@@ -467,7 +463,7 @@ export function ReportSections({ report }: { report: Record<string, unknown> }) 
       {/* Data Transparency */}
       <details
         className="bg-white border border-gray-100 overflow-hidden"
-        style={{ borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+        style={{ borderRadius: '20px', boxShadow: '0px 0px 100px 0px rgba(0,0,0,0.05)' }}
       >
         <summary className="px-5 py-4 cursor-pointer font-semibold text-gray-700 flex items-center gap-2 hover:bg-gray-50 select-none">
           <span>🔍</span> Data Transparency
@@ -519,7 +515,7 @@ function ReportCard({
   return (
     <div
       className="bg-white border border-gray-100 p-5"
-      style={{ borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+      style={{ borderRadius: '20px', boxShadow: '0px 0px 100px 0px rgba(0,0,0,0.05)' }}
     >
       <h2 className="font-semibold text-gray-800 flex items-center gap-2 mb-4">
         <span>{icon}</span> {title}

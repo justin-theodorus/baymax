@@ -58,63 +58,68 @@ export default async function ReportPage({ params }: ReportPageProps) {
   const periodEnd = header.period_end ? String(header.period_end).slice(0, 10) : ''
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-5">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-400">
-        <Link href="/clinician" className="hover:text-violet-600 transition-colors">
-          Patients
-        </Link>
-        <span>/</span>
-        <span className="text-gray-700">{patient.name}</span>
-      </div>
-
+    <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{patient.name}</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Age {patient.age} · {(patient.conditions ?? []).join(', ')}
-          </p>
-          {generatedAt && (
-            <p className="text-gray-400 text-xs mt-1">
-              Report generated {generatedAt} UTC · Period: {periodStart} – {periodEnd}
+      <div className="px-8 pt-16 pb-4">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-[#b4b4b4] mb-4">
+          <Link href="/clinician" className="hover:text-[#4894fe] transition-colors">
+            Patients
+          </Link>
+          <span>/</span>
+          <span className="text-[#8f8f8f]">{patient.name}</span>
+        </div>
+
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-black text-2xl font-bold">{patient.name}</p>
+            <p className="text-[#8f8f8f] text-base mt-1">
+              Age {patient.age} · {(patient.conditions ?? []).join(', ')}
             </p>
-          )}
+            {generatedAt && (
+              <p className="text-[#b4b4b4] text-sm mt-1">
+                Report generated {generatedAt} · Period: {periodStart} – {periodEnd}
+              </p>
+            )}
+          </div>
+          <PdfExportButton
+            patientId={patientId}
+            accessToken={session.access_token}
+            startDate=""
+            endDate=""
+          />
         </div>
-        <PdfExportButton
-          patientId={patientId}
-          accessToken={session.access_token}
-          startDate=""
-          endDate=""
-        />
       </div>
 
-      {/* AI disclaimer */}
-      <div className="bg-amber-50 border-2 border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-        <span className="text-lg leading-none mt-0.5">⚠</span>
-        <span>
-          <strong>AI-Generated Summary</strong> — for clinical review only, not a clinical record.
-          All findings require professional clinical judgement before action.
-        </span>
-      </div>
-
-      {/* Date range customizer */}
-      <DateRangeControls patientId={patientId} accessToken={session.access_token} />
-
-      {/* Default report (last 7 days) */}
-      {report ? (
-        <>
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
-            Default report — last 7 days
+      <div className="flex flex-col gap-5 px-8 pb-8">
+        {/* AI disclaimer */}
+        <div className="bg-[#f5f5f5] rounded-[20px] px-5 py-4 flex items-start gap-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#F4A261" className="flex-shrink-0 mt-0.5">
+            <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
+          </svg>
+          <p className="text-[#8f8f8f] text-sm leading-relaxed">
+            <span className="font-semibold text-[#464646]">AI-Generated Summary</span> — for clinical review only, not a clinical record. All findings require professional clinical judgement before action.
           </p>
-          <ReportSections report={report} />
-        </>
-      ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
-          <div className="text-4xl mb-3">📋</div>
-          <p className="text-gray-500">Could not load the report. The patient may have insufficient data.</p>
         </div>
-      )}
-    </div>
+
+        {/* Date range customizer */}
+        <DateRangeControls patientId={patientId} accessToken={session.access_token} />
+
+        {/* Default report (last 7 days) */}
+        {report ? (
+          <>
+            <p className="text-[#b4b4b4] text-xs font-semibold uppercase tracking-wider">
+              Default Report — Last 7 days
+            </p>
+            <ReportSections report={report} />
+          </>
+        ) : (
+          <div className="bg-[#f5f5f5] rounded-[20px] p-10 text-center">
+            <div className="text-4xl mb-3">📋</div>
+            <p className="text-[#8f8f8f] text-base">Could not load the report. The patient may have insufficient data.</p>
+          </div>
+        )}
+      </div>
+    </main>
   )
 }

@@ -3,74 +3,74 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
-type Message = { role: 'user' | 'assistant'; content: string }
 type VoiceState = 'idle' | 'recording' | 'processing' | 'playing'
 type Language = 'en' | 'zh'
 
-function renderMarkdown(text: string) {
-  return text.split('\n').map((line, i) => {
-    const parts = line.split(/\*\*(.+?)\*\*/g)
-    const rendered = parts.map((part, j) =>
-      j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-    )
-    return (
-      <span key={i}>
-        {rendered}
-        {i < text.split('\n').length - 1 && <br />}
-      </span>
-    )
-  })
+interface MedSchedule {
+  times: string[]
+  frequency: string
 }
 
-function getGreeting(language: Language): string {
+interface Medication {
+  id: string
+  name: string
+  dosage: string
+  schedule: MedSchedule
+  notes?: string
+  active: boolean
+}
+
+interface PendingMed extends Medication {
+  overdue: boolean
+}
+
+interface MedsData {
+  medications: Medication[]
+  taken_today: Medication[]
+  pending_today: PendingMed[]
+}
+
+function formatTime(timeStr: string): string {
+  const [h, m] = timeStr.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hour = h % 12 || 12
+  return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+function getGreeting(): string {
   const hour = new Date().getHours()
-  if (language === 'zh') {
-    if (hour < 12) return '早上好'
-    if (hour < 18) return '下午好'
-    return '晚上好'
-  }
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
+  if (hour < 12) return 'Good Morning'
+  if (hour < 18) return 'Good Afternoon'
+  return 'Good Evening'
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
 
-function MicIcon({ size = 40 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <line x1="12" x2="12" y1="19" y2="22" />
-    </svg>
-  )
-}
-
 export default function PatientHome() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [language, setLanguage] = useState<Language>('en')
+  const [language] = useState<Language>('en')
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
-  const [speed, setSpeed] = useState<'normal' | 'slow'>('normal')
+  const [speed] = useState<'normal' | 'slow'>('normal')
   const [patientId, setPatientId] = useState<string>('')
   const [accessToken, setAccessToken] = useState<string>('')
   const [wsReconnects, setWsReconnects] = useState(0)
   const [patientName, setPatientName] = useState<string>('')
-  const [medsTaken, setMedsTaken] = useState(0)
-  const [medsTotal, setMedsTotal] = useState(0)
+  const [medsData, setMedsData] = useState<MedsData | null>(null)
 
-  const chatEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const pendingAudioRef = useRef<ArrayBuffer[]>([])
+
+  const healthTip = language === 'zh'
+    ? '提示：豆腐和鱼是管理血糖的好选择。'
+    : 'Tip: Fish soup is a great low-GI option — a good choice for managing blood sugar today!'
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -84,7 +84,6 @@ export default function PatientHome() {
         const pid = payload.app_user_id || ''
         setPatientId(pid)
 
-        // Fetch patient name
         if (pid) {
           const { data } = await supabase.from('patients').select('name').eq('id', pid).single()
           if (data?.name) setPatientName(data.name.split(' ')[0])
@@ -93,9 +92,9 @@ export default function PatientHome() {
         setPatientId('')
       }
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fetch today's medication summary
   useEffect(() => {
     if (!patientId || !accessToken) return
     fetch(`${API_BASE}/api/medications/today?patient_id=${patientId}`, {
@@ -104,44 +103,10 @@ export default function PatientHome() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
-        setMedsTaken(data.taken_today?.length ?? 0)
-        setMedsTotal((data.taken_today?.length ?? 0) + (data.pending_today?.length ?? 0))
+        setMedsData(data)
       })
       .catch(() => {})
   }, [patientId, accessToken])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
-
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading || !patientId || !accessToken) return
-    const userMsg = input.trim()
-    setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }])
-    setIsLoading(true)
-
-    try {
-      const res = await fetch(`${API_BASE}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ patient_id: patientId, message: userMsg, language }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
-    } catch {
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: language === 'zh' ? '抱歉，连接失败。请再试一次。' : 'Sorry, I could not connect. Please try again.' },
-      ])
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const playAudio = useCallback(async (audioData: ArrayBuffer) => {
     if (!audioCtxRef.current) {
@@ -176,12 +141,7 @@ export default function PatientHome() {
     ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
         const msg = JSON.parse(event.data)
-        if (msg.type === 'transcript') {
-          setMessages(prev => [...prev, { role: 'user', content: msg.text }])
-          setVoiceState('processing')
-        } else if (msg.type === 'response_text') {
-          setMessages(prev => [...prev, { role: 'assistant', content: msg.text }])
-        } else if (msg.type === 'error') {
+        if (msg.type === 'error') {
           setVoiceState('idle')
         }
       } else if (event.data instanceof ArrayBuffer) {
@@ -265,266 +225,176 @@ export default function PatientHome() {
     playing: language === 'zh' ? 'Baymax 在说话…' : 'Baymax is speaking...',
   }[voiceState]
 
-  const voiceBg = {
-    idle: '#E8634A',
-    recording: '#E63946',
-    processing: '#F4A261',
-    playing: '#52B788',
-  }[voiceState]
-
-  const greeting = `${getGreeting(language)}${patientName ? `, ${patientName}!` : '!'}`
-  const healthTip = language === 'zh'
-    ? '提示：豆腐和鱼是管理血糖的好选择。'
-    : 'Tip: Fish soup is a great low-GI option — a good choice for managing blood sugar today!'
+  const pendingMeds = medsData?.pending_today ?? []
+  const takenMeds = medsData?.taken_today ?? []
+  const allMeds = [...pendingMeds, ...takenMeds]
 
   return (
-    <main style={{ background: '#F7F5F2', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="space-y-4">
-            {/* Daily summary card */}
-            <div style={{
-              background: 'white',
-              borderRadius: '16px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              overflow: 'hidden',
-            }}>
-              <div style={{ background: '#E8634A', padding: '14px 20px' }}>
-                <p style={{ color: 'white', fontSize: '22px', fontWeight: 600 }}>{greeting}</p>
-              </div>
-              <div style={{ padding: '16px 20px' }}>
-                {medsTotal > 0 && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '17px', color: '#374151', fontWeight: 500 }}>
-                        {language === 'zh'
-                          ? `今日已服用 ${medsTaken} / ${medsTotal} 种药物`
-                          : `${medsTaken} of ${medsTotal} medications taken today`}
-                      </span>
-                      <span style={{ fontSize: '17px', color: medsTaken === medsTotal ? '#52B788' : '#E8634A', fontWeight: 600 }}>
-                        {medsTotal > 0 ? Math.round(medsTaken / medsTotal * 100) : 0}%
-                      </span>
-                    </div>
-                    <div style={{ background: '#f3f4f6', borderRadius: '999px', height: '8px' }}>
-                      <div style={{
-                        background: medsTaken === medsTotal ? '#52B788' : '#E8634A',
-                        borderRadius: '999px',
-                        height: '8px',
-                        width: `${medsTotal > 0 ? Math.round(medsTaken / medsTotal * 100) : 0}%`,
-                        transition: 'width 0.5s ease',
-                      }} />
-                    </div>
-                  </div>
-                )}
-                <p style={{ fontSize: '16px', color: '#6b7280', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
-                  {healthTip}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+    <main className="bg-white min-h-screen">
+      <style>{`
+        @keyframes wave {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.5); }
+        }
+      `}</style>
 
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              style={{
-                maxWidth: '80%',
-                padding: '16px 20px',
-                borderRadius: '18px',
-                fontSize: '20px',
-                lineHeight: '1.65',
-                background: msg.role === 'user' ? '#E8634A' : 'white',
-                color: msg.role === 'user' ? 'white' : '#1f2937',
-                boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-              }}
-            >
-              {msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content}
-            </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="flex justify-start">
-            <div
-              style={{
-                background: 'white',
-                padding: '16px 20px',
-                borderRadius: '18px',
-                fontSize: '20px',
-                color: '#9ca3af',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              }}
-            >
-              <span className="animate-pulse">
-                {language === 'zh' ? '思考中…' : 'Thinking…'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div ref={chatEndRef} />
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 pt-16 pb-4">
+        <div>
+          <p className="text-[#8f8f8f] text-lg font-medium">{getGreeting()}</p>
+          <p className="text-black text-2xl font-bold">{patientName ? `${patientName}!` : 'Hello!'}</p>
+        </div>
+        <div className="w-[60px] h-[60px] rounded-full bg-[#4894fe] flex items-center justify-center flex-shrink-0">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+            <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+          </svg>
+        </div>
       </div>
 
-      {/* Voice section */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '12px 0 8px' }}>
-        {/* Large voice button with pulsing ring */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {voiceState === 'recording' && (
-            <div style={{
-              position: 'absolute',
-              width: '148px',
-              height: '148px',
-              borderRadius: '50%',
-              border: `3px solid #E63946`,
-              opacity: 0.4,
-              animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
-            }} />
-          )}
-          <style>{`
-            @keyframes ping {
-              75%, 100% { transform: scale(1.4); opacity: 0; }
-            }
-            @keyframes wave {
-              0%, 100% { transform: scaleY(1); }
-              50% { transform: scaleY(1.5); }
-            }
-          `}</style>
-          <button
-            onPointerDown={startRecording}
-            onPointerUp={stopRecording}
-            onPointerLeave={voiceState === 'recording' ? stopRecording : undefined}
-            disabled={voiceState === 'processing' || !accessToken}
-            style={{
-              width: '120px',
-              height: '120px',
-              borderRadius: '50%',
-              background: voiceBg,
-              color: 'white',
-              border: 'none',
-              cursor: voiceState === 'processing' ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 0.2s, transform 0.1s',
-              boxShadow: '0 4px 20px rgba(232,99,74,0.4)',
-              transform: voiceState === 'recording' ? 'scale(0.96)' : 'scale(1)',
-              opacity: !accessToken ? 0.5 : 1,
-            }}
-            aria-label="Push to talk"
-          >
-            {voiceState === 'playing' ? (
-              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', height: '36px' }}>
-                {[0, 1, 2, 3, 4].map(i => (
-                  <div key={i} style={{
-                    width: '5px',
-                    height: `${14 + Math.sin(i) * 12}px`,
-                    background: 'white',
-                    borderRadius: '3px',
-                    animation: `wave 0.8s ease-in-out infinite`,
-                    animationDelay: `${i * 0.12}s`,
-                  }} />
+      <div className="flex flex-col gap-6 px-8 pb-8">
+        {/* Baymax Card */}
+        <div className="bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)] flex flex-col items-center gap-5 p-8">
+          {/* Title */}
+          <div className="flex items-center gap-4 w-full">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="#4894fe">
+              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423L16.5 15.75l.394 1.183a2.25 2.25 0 001.423 1.423L19.5 18.75l-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+            </svg>
+            <p className="text-black text-2xl font-bold">Baymax</p>
+          </div>
+
+          {/* Health tip bubble */}
+          <div className="w-full bg-[rgba(142,142,142,0.2)] rounded-tl-[20px] rounded-tr-[20px] rounded-br-[20px] px-5 py-3">
+            <p className="text-black text-base font-medium">{healthTip}</p>
+          </div>
+
+          {/* Voice label */}
+          <p className="text-[#b4b4b4] text-lg font-medium">{voiceLabel}</p>
+
+          {/* Waveform voice button */}
+          <div className="relative flex items-center justify-center">
+            {voiceState === 'recording' && (
+              <div className="absolute w-36 h-36 rounded-full border-2 border-[#4894fe] opacity-40 animate-ping" />
+            )}
+            <button
+              onPointerDown={startRecording}
+              onPointerUp={stopRecording}
+              onPointerLeave={voiceState === 'recording' ? stopRecording : undefined}
+              disabled={voiceState === 'processing' || !accessToken}
+              className="relative"
+              style={{ minHeight: '0', minWidth: '0' }}
+              aria-label="Push to talk"
+            >
+              <div className="flex items-center gap-1.5 h-24 w-24">
+                {[0.4, 0.7, 1, 0.8, 1, 0.7, 0.4].map((h, i) => (
+                  <div
+                    key={i}
+                    className="rounded-full"
+                    style={{
+                      width: '8px',
+                      height: `${h * 80}px`,
+                      background: voiceState === 'recording' ? '#E63946' : '#4894fe',
+                      opacity: voiceState === 'processing' ? 0.5 : 1,
+                      animation: voiceState === 'recording' || voiceState === 'playing'
+                        ? `wave 0.8s ease-in-out infinite ${i * 0.1}s`
+                        : 'none',
+                    }}
+                  />
                 ))}
               </div>
-            ) : (
-              <MicIcon size={42} />
-            )}
-          </button>
+            </button>
+          </div>
+
+          {/* Ask Baymax input — clicking goes to chat */}
+          <Link
+            href="/patient/chat"
+            className="w-full bg-[#f2f2f2] rounded-full flex items-center gap-3 px-5 py-3 cursor-pointer"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            <p className="flex-1 text-[#838080] text-base font-medium">Ask Baymax</p>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#4894fe">
+              <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+            </svg>
+          </Link>
         </div>
 
-        <p style={{ fontSize: '20px', color: '#4b5563', fontWeight: 500 }}>{voiceLabel}</p>
+        {/* Medication Cards */}
+        {allMeds.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {pendingMeds.map((med, i) => {
+              const isOverdue = med.overdue
+              const bgColor = i === 0 ? '#4894fe' : '#464646'
+              const timeColor = isOverdue ? '#ff7878' : 'white'
+              const timeStr = med.schedule?.times?.[0] ? formatTime(med.schedule.times[0]) : ''
+              return (
+                <div
+                  key={med.id}
+                  className="rounded-[20px] flex items-center justify-between px-10 py-5"
+                  style={{ background: bgColor }}
+                >
+                  <div className="flex items-center gap-5">
+                    <div className="w-12 h-12 rounded-full border-2 border-[rgba(255,255,255,0.3)] flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full border-2 border-[rgba(255,255,255,0.5)]" />
+                    </div>
+                    <div>
+                      <p className="text-white text-lg font-bold">{med.name}</p>
+                      <p className="text-white text-base font-normal">{med.dosage}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill={timeColor} opacity="0.9">
+                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 000-1.5h-3.75V6z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-base font-normal" style={{ color: timeColor }}>{timeStr}</p>
+                  </div>
+                </div>
+              )
+            })}
+            {takenMeds.map((med, i) => {
+              const bgColor = pendingMeds.length === 0 && i === 0 ? '#4894fe' : '#464646'
+              return (
+                <div
+                  key={med.id}
+                  className="rounded-[20px] flex items-center justify-between px-10 py-5 opacity-60"
+                  style={{ background: bgColor }}
+                >
+                  <div className="flex items-center gap-5">
+                    <div className="w-12 h-12 rounded-full border-2 border-[rgba(255,255,255,0.3)] flex items-center justify-center flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 011.04-.207z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-white text-lg font-bold">{med.name}</p>
+                      <p className="text-white text-base font-normal">{med.dosage}</p>
+                    </div>
+                  </div>
+                  <p className="text-white text-base font-normal opacity-70">Taken</p>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
-        {/* Speed toggle + language toggle */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {(['normal', 'slow'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setSpeed(s)}
-              style={{
-                padding: '6px 16px',
-                borderRadius: '999px',
-                fontSize: '15px',
-                fontWeight: 500,
-                background: speed === s ? '#E8634A' : 'white',
-                color: speed === s ? 'white' : '#E8634A',
-                border: `1.5px solid #E8634A`,
-                minHeight: '36px',
-              }}
-            >
-              {s === 'normal'
-                ? language === 'zh' ? '正常语速' : 'Normal'
-                : language === 'zh' ? '慢速' : 'Slow'}
-            </button>
-          ))}
-          {(['en', 'zh'] as Language[]).map(lang => (
-            <button
-              key={lang}
-              onClick={() => setLanguage(lang)}
-              style={{
-                padding: '6px 16px',
-                borderRadius: '999px',
-                fontSize: '15px',
-                fontWeight: 600,
-                background: language === lang ? '#3B4F7A' : 'white',
-                color: language === lang ? 'white' : '#3B4F7A',
-                border: `1.5px solid #3B4F7A`,
-                minHeight: '36px',
-              }}
-            >
-              {lang === 'en' ? 'EN' : '中文'}
-            </button>
-          ))}
+        {/* Doctor Card */}
+        <div className="bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)] flex flex-col px-10 py-5 gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-[#e0e0e0] flex-shrink-0" />
+              <div>
+                <p className="text-black text-2xl font-bold">Dr. Imran Syahir</p>
+                <p className="text-[#b4b4b4] text-lg font-medium">General Doctor</p>
+              </div>
+            </div>
+            <svg width="11" height="22" viewBox="0 0 11 22" fill="none">
+              <path d="M1 1l9 10L1 21" stroke="#b4b4b4" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div className="h-px bg-[#e5e5e5] w-full" />
+          <div className="flex items-center justify-between">
+            <p className="text-black text-base font-medium">Sunday, 12 June</p>
+            <p className="text-[#4894fe] text-base font-medium">11:00 - 12:00 AM</p>
+          </div>
         </div>
-      </div>
-
-      {/* Text input */}
-      <div style={{
-        padding: '8px 16px 16px',
-        background: 'white',
-        borderTop: '1px solid #f3f4f6',
-        display: 'flex',
-        gap: '10px',
-        alignItems: 'center',
-      }}>
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          placeholder={language === 'zh' ? '输入消息…' : 'Type a message…'}
-          disabled={isLoading}
-          style={{
-            flex: 1,
-            padding: '12px 18px',
-            border: '2px solid #f0ece8',
-            borderRadius: '18px',
-            fontSize: '20px',
-            minHeight: '56px',
-            background: '#fafaf9',
-            outline: 'none',
-            color: '#1f2937',
-          }}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={isLoading || !input.trim() || !accessToken}
-          style={{
-            padding: '12px 20px',
-            background: '#E8634A',
-            color: 'white',
-            borderRadius: '18px',
-            fontWeight: 700,
-            fontSize: '20px',
-            minHeight: '56px',
-            minWidth: '80px',
-            opacity: isLoading || !input.trim() || !accessToken ? 0.4 : 1,
-            border: 'none',
-            cursor: 'pointer',
-            transition: 'opacity 0.2s',
-          }}
-        >
-          {language === 'zh' ? '发送' : 'Send'}
-        </button>
       </div>
     </main>
   )
