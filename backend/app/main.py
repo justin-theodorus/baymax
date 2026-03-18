@@ -62,34 +62,59 @@ def _sb():
     return create_client(settings.supabase_url, settings.supabase_secret_key)
 
 
+_jwks_client: pyjwt.PyJWKClient | None = None
+
+
+def _get_jwks_client() -> pyjwt.PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None:
+        _jwks_client = pyjwt.PyJWKClient(
+            f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
+        )
+    return _jwks_client
+
+
 def _decode_token(token: str) -> dict:
-    jwt_options = (
-        {"verify_exp": True} if settings.supabase_jwt_secret else {"verify_signature": False}
-    )
-    return pyjwt.decode(
-        token,
-        settings.supabase_jwt_secret or "dummy",
-        algorithms=["HS256"],
-        options=jwt_options,
-    )
+    try:
+        client = _get_jwks_client()
+        signing_key = client.get_signing_key_from_jwt(token)
+        return pyjwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256", "RS256", "HS256"],
+            audience="authenticated",
+            options={"verify_exp": True},
+        )
+    except pyjwt.InvalidTokenError:
+        raise
+    except Exception:
+        # JWKS fetch failed — fall back to no-signature verification for dev
+        return pyjwt.decode(token, options={"verify_signature": False, "verify_aud": False})
 
 
 def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> CurrentUser:
     if credentials is None:
+        print("DEBUG: no credentials")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authorization token",
         )
     try:
         payload = _decode_token(credentials.credentials)
+        print(f"DEBUG: decoded ok, keys={list(payload.keys())}, role={payload.get('role')}, app_role={payload.get('app_role')}, app_user_id={payload.get('app_user_id')}")
     except pyjwt.ExpiredSignatureError:
+        print("DEBUG: token expired")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except pyjwt.InvalidTokenError as e:
+        print(f"DEBUG: InvalidTokenError: {e}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+    except Exception as e:
+        print(f"DEBUG: unexpected error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Auth error: {e}")
 
-    role: UserRole = payload.get("app_role", "")
+    role: UserRole = payload.get("app_role") or payload.get("role", "")
     app_user_id: str = payload.get("app_user_id", "")
     user_id: str = payload.get("sub", "")
 
