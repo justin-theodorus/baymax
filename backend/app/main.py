@@ -9,6 +9,12 @@ import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.models.rag import GuidelineChunk
+from app.repositories.audit_repository import InMemoryAuditRepository
+from app.repositories.conversation_repository import InMemoryConversationRepository
+from app.repositories.medication_repository import InMemoryMedicationRepository
+from app.repositories.patient_repository import InMemoryPatientRepository
+from app.repositories.rag_repository import InMemoryRagRepository
 
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
@@ -20,7 +26,6 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("baymax.backend")
-
 
 DEFAULT_APP_CONFIG: dict[str, Any] = {
     "app": {
@@ -51,6 +56,38 @@ def load_yaml(path: Path, default: dict[str, Any] | None = None) -> dict[str, An
     return data
 
 
+def build_default_guideline_chunks() -> list[GuidelineChunk]:
+    return [
+        GuidelineChunk(
+            source_title="HPB Demo Guidance - Medication Routine",
+            source_organization="HPB",
+            chunk_text=(
+                "Keeping a regular routine, using reminders, and maintaining an up-to-date medication list "
+                "can support medication adherence for chronic condition management."
+            ),
+            tags=["medication", "routine", "adherence"],
+        ),
+        GuidelineChunk(
+            source_title="MOH Demo Guidance - Seek Urgent Help",
+            source_organization="MOH",
+            chunk_text=(
+                "Chest pain and difficulty breathing are warning symptoms that may require urgent medical attention. "
+                "Call emergency services or seek urgent care immediately."
+            ),
+            tags=["emergency", "chest pain", "breathing"],
+        ),
+        GuidelineChunk(
+            source_title="HPB Demo Guidance - Ask Your Care Team",
+            source_organization="HPB",
+            chunk_text=(
+                "When unsure about medications, symptoms, or next steps, patients should consult their doctor, "
+                "nurse, or pharmacist rather than changing treatment on their own."
+            ),
+            tags=["care team", "medications", "support"],
+        ),
+    ]
+
+
 app_config = load_yaml(CONFIG_DIR / "app.yaml", DEFAULT_APP_CONFIG)
 cors_config = load_yaml(CONFIG_DIR / "cors.yaml", DEFAULT_CORS_CONFIG)
 feature_flags = load_yaml(CONFIG_DIR / "features.yaml", {})
@@ -66,6 +103,12 @@ async def lifespan(app: FastAPI):
     app.state.safety_rules = safety_rules
     app.state.emergency_keywords = emergency_keywords
     app.state.escalation_rules = escalation_rules
+
+    app.state.patient_repo = InMemoryPatientRepository()
+    app.state.medication_repo = InMemoryMedicationRepository()
+    app.state.conversation_repo = InMemoryConversationRepository()
+    app.state.rag_repo = InMemoryRagRepository(seed=build_default_guideline_chunks())
+    app.state.audit_repo = InMemoryAuditRepository()
 
     logger.info("Baymax backend starting")
     logger.info("Loaded feature flags: %s", list(feature_flags.keys()))
@@ -105,7 +148,7 @@ def register_system_routes(app: FastAPI) -> None:
 
 def register_optional_routers(app: FastAPI) -> None:
     try:
-        from app.api.router import api_router  # noqa: WPS433
+        from app.api.router import api_router
     except ModuleNotFoundError:
         logger.info("app.api.router not created yet; skipping API router registration")
         return

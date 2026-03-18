@@ -1,24 +1,44 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import Field
 
-from app.models.base import AppBaseModel, EntityModel, TimestampedModel
+from app.models.base import EntityModel, TimestampedModel, utc_now
+from app.models.enums import (
+    ChannelType,
+    LanguageCode,
+    MessageRole,
+    SessionStatus,
+    SummaryAudience,
+)
+from app.models.rag import GroundingCitation
 
 
-class GuidelineChunk(EntityModel, TimestampedModel):
-    source_title: str
-    source_url: str | None = None
-    source_organization: str
-    chunk_text: str
-    embedding_model: str | None = None
-    tags: list[str] = Field(default_factory=list)
+class ConversationSession(EntityModel, TimestampedModel):
+    patient_id: UUID
+    channel: ChannelType = ChannelType.TEXT
+    language: LanguageCode = LanguageCode.EN
+    status: SessionStatus = SessionStatus.ACTIVE
+    started_at: datetime = Field(default_factory=utc_now)
+    last_message_at: datetime = Field(default_factory=utc_now)
 
 
-class GroundingCitation(AppBaseModel):
-    chunk_id: UUID
-    source_title: str
-    source_organization: str
-    excerpt: str
-    relevance_score: float
+class ConversationMessage(EntityModel, TimestampedModel):
+    session_id: UUID
+    patient_id: UUID
+    role: MessageRole
+    channel: ChannelType
+    content: str
+    language: LanguageCode
+    citations: list[GroundingCitation] = Field(default_factory=list)
+    safe_for_summary: bool = False
+
+
+class ConversationSummary(EntityModel, TimestampedModel):
+    patient_id: UUID
+    session_id: UUID | None = None
+    audience: SummaryAudience
+    summary_text: str
+    generated_from_message_ids: list[UUID] = Field(default_factory=list)
