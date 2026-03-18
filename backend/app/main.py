@@ -19,10 +19,20 @@ from app.models.chat import ChatRequest, ChatResponse, LogDoseRequest, BarrierRe
 
 # ── Caregiver request body models ─────────────────────────────────────────────
 
+CAREGIVER_VITAL_UNITS = {
+    "blood_glucose": "mmol/L",
+    "blood_pressure_systolic": "mmHg",
+    "blood_pressure_diastolic": "mmHg",
+    "heart_rate": "bpm",
+    "weight": "kg",
+}
+
+
 class LogVitalRequest(BaseModel):
     vital_type: str
     value: float
-    unit: str
+    unit: str | None = None
+    recorded_at: datetime | None = None
 
 
 class AddMedicationRequest(BaseModel):
@@ -670,15 +680,15 @@ async def caregiver_get_vitals(
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = (
         sb.table("vitals")
-        .select("id, vital_type, value, unit, recorded_at, source")
+        .select("id, type, value, unit, recorded_at, source")
         .eq("patient_id", patient_id)
         .gte("recorded_at", since)
-        .order("recorded_at", desc=False)
+        .order("recorded_at", desc=True)
         .execute()
         .data
     )
     vitals = [
-        {"id": r["id"], "type": r["vital_type"], "value": r["value"],
+        {"id": r["id"], "type": r["type"], "value": r["value"],
          "unit": r["unit"], "recorded_at": r["recorded_at"], "source": r["source"]}
         for r in rows
     ]
@@ -693,19 +703,33 @@ async def caregiver_log_vital(
 ):
     _verify_caregiver_patient_access(current_user, patient_id)
     sb = _sb()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    unit = CAREGIVER_VITAL_UNITS.get(req.vital_type)
+    if unit is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported vital_type '{req.vital_type}'",
+        )
+
+    recorded_at = req.recorded_at
+    if recorded_at is None:
+        recorded_at_iso = datetime.now(timezone.utc).isoformat()
+    elif recorded_at.tzinfo is None:
+        recorded_at_iso = recorded_at.replace(tzinfo=timezone.utc).isoformat()
+    else:
+        recorded_at_iso = recorded_at.astimezone(timezone.utc).isoformat()
+
     vital_row = (
         sb.table("vitals")
-        .insert({"patient_id": patient_id, "vital_type": req.vital_type,
-                 "value": req.value, "unit": req.unit, "source": "caregiver",
-                 "recorded_at": now_iso})
+        .insert({"patient_id": patient_id, "type": req.vital_type,
+                 "value": req.value, "unit": unit, "source": "caregiver",
+                 "recorded_at": recorded_at_iso})
         .execute()
         .data[0]
     )
     sb.table("audit_log").insert(
         {"agent": current_user.app_user_id, "action": "log_vital",
          "patient_id": patient_id,
-         "reasoning": f"caregiver logged {req.vital_type}={req.value}{req.unit}"}
+         "reasoning": f"caregiver logged {req.vital_type}={req.value}{unit}"}
     ).execute()
     return {"success": True, "vital": vital_row}
 

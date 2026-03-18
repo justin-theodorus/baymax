@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { SidebarAccountMenu } from '@/components/shared/sidebar-account-menu'
 
 const BLUE = '#4894fe'
 const GRAY = '#9ca3af'
@@ -69,11 +70,7 @@ export function BottomNav({ language = 'en' }: { language?: 'en' | 'zh' }) {
 
       {/* Desktop sidebar */}
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-white border-r border-[#e4e4e4] z-50 flex-col">
-        {/* Header */}
-        <div className="px-6 py-8">
-          <p className="text-[#4894fe] text-xl font-bold">Baymax</p>
-          <p className="text-[#8f8f8f] text-sm mt-1">AI Care Companion</p>
-        </div>
+        <SidebarAccountMenu title="Baymax" subtitle="AI Care Companion" />
 
         {/* Nav items */}
         <nav className="flex flex-col gap-2 px-4 flex-1">

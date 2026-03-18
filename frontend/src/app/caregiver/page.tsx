@@ -205,7 +205,7 @@ export default function CaregiverDashboard() {
         <p className="text-[#b4b4b4] text-sm font-semibold uppercase tracking-wider">Quick Access</p>
 
         {/* Quick access cards */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Link
             href="/caregiver/alerts"
             className="bg-[#4894fe] rounded-[20px] p-5 flex flex-col gap-3"
@@ -236,6 +236,22 @@ export default function CaregiverDashboard() {
             <div>
               <p className="text-white text-base font-bold">Weekly Digest</p>
               <p className="text-white text-xs opacity-70 mt-0.5">AI-generated summary</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/caregiver/vitals"
+            className="bg-white border border-[#e4e4e4] rounded-[20px] p-5 flex flex-col gap-3 shadow-[0px_0px_50px_0px_rgba(0,0,0,0.04)]"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            <div className="w-10 h-10 rounded-[14px] bg-[#eef6ff] flex items-center justify-center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M4.5 12h3l2-5 4 10 2-5h4" stroke="#4894fe" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-black text-base font-bold">Vitals</p>
+              <p className="text-[#8f8f8f] text-xs mt-0.5">Log readings and review trends</p>
             </div>
           </Link>
         </div>

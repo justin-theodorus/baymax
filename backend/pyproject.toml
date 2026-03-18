@@ -1,13 +1,13 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "baymax-backend"
 version = "0.1.0"
 description = "Baymax 2.0 — Multi-agent AI care companion backend"
 requires-python = ">=3.11"
-dependencies = []
+dynamic = ["dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -19,3 +19,6 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

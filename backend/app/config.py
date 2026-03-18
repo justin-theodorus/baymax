@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env relative to this file so it works regardless of CWD
@@ -38,6 +39,17 @@ class Settings(BaseSettings):
     # App
     frontend_origin: str = 'http://localhost:3000'
     debug: bool = False
+
+    @field_validator('debug', mode='before')
+    @classmethod
+    def parse_debug(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {'release', 'prod', 'production'}:
+                return False
+            if normalized in {'debug', 'dev', 'development'}:
+                return True
+        return value
 
 
 settings = Settings()

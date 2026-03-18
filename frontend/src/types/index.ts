@@ -51,7 +51,7 @@ export interface Vital {
   value: number
   unit: string
   recorded_at: string
-  source: 'patient_reported' | 'device' | 'clinician'
+  source: 'patient_reported' | 'device' | 'clinician' | 'caregiver'
 }
 
 export interface Conversation {
