@@ -45,9 +45,11 @@ app = FastAPI(
     version="0.2.0",
 )
 
+_allowed_origins = list({settings.frontend_origin, "http://localhost:3000"})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -228,7 +230,7 @@ async def voice_ws(websocket: WebSocket):
 
     try:
         payload = _decode_token(token)
-        role = payload.get("app_role", "")
+        role = payload.get("app_role") or payload.get("role", "")
         patient_id = payload.get("app_user_id", "")
         if role != "patient":
             await websocket.close(code=4003)
@@ -314,6 +316,10 @@ async def voice_ws(websocket: WebSocket):
                     result = await asyncio.to_thread(graph.invoke, initial_state)
                     response_text: str = result.get("response_text", "")
                     final_language: str = result.get("language", language)
+
+                    if not response_text:
+                        await websocket.send_json({"type": "error", "text": "No response generated. Please try again."})
+                        continue
 
                     # Persist to conversations (text only — no audio stored)
                     sb.table("conversations").insert(
@@ -672,11 +678,9 @@ async def caregiver_log_vital(
         .data[0]
     )
     sb.table("audit_log").insert(
-        {"actor": current_user.app_user_id, "action": "log_vital",
+        {"agent": current_user.app_user_id, "action": "log_vital",
          "patient_id": patient_id,
-         "details": {"vital_type": req.vital_type, "value": req.value,
-                     "unit": req.unit, "recorded_at": now_iso},
-         "reasoning": "caregiver logged vital"}
+         "reasoning": f"caregiver logged {req.vital_type}={req.value}{req.unit}"}
     ).execute()
     return {"success": True, "vital": vital_row}
 
@@ -709,18 +713,24 @@ async def caregiver_add_medication(
 ):
     _verify_caregiver_patient_access(current_user, patient_id)
     sb = _sb()
+    schedule = req.schedule or {}
     med_row = (
         sb.table("medications")
-        .insert({"patient_id": patient_id, "name": req.name, "dosage": req.dosage,
-                 "schedule": req.schedule, "notes": req.notes, "active": True})
+        .insert({
+            "patient_id": patient_id,
+            "name": req.name,
+            "dosage": req.dosage,
+            "frequency": schedule.get("frequency", "daily"),
+            "schedule_times": schedule.get("times", ["08:00"]),
+            "active": True,
+        })
         .execute()
         .data[0]
     )
     sb.table("audit_log").insert(
-        {"actor": current_user.app_user_id, "action": "add_medication",
+        {"agent": current_user.app_user_id, "action": "add_medication",
          "patient_id": patient_id,
-         "details": {"medication_id": med_row["id"], "name": req.name, "dosage": req.dosage},
-         "reasoning": "caregiver added medication"}
+         "reasoning": f"caregiver added {req.name} {req.dosage}"}
     ).execute()
     return {"success": True, "medication": med_row}
 
@@ -734,14 +744,21 @@ async def caregiver_edit_medication(
 ):
     _verify_caregiver_patient_access(current_user, patient_id)
     sb = _sb()
-    updates: dict = {k: v for k, v in req.model_dump().items() if v is not None}
+    raw = req.model_dump()
+    updates: dict = {}
+    if raw.get("name") is not None:
+        updates["name"] = raw["name"]
+    if raw.get("dosage") is not None:
+        updates["dosage"] = raw["dosage"]
+    if raw.get("schedule") is not None:
+        updates["frequency"] = raw["schedule"].get("frequency", "daily")
+        updates["schedule_times"] = raw["schedule"].get("times", ["08:00"])
     if not updates:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
     sb.table("medications").update(updates).eq("id", med_id).eq("patient_id", patient_id).execute()
     sb.table("audit_log").insert(
-        {"actor": current_user.app_user_id, "action": "edit_medication",
+        {"agent": current_user.app_user_id, "action": "edit_medication",
          "patient_id": patient_id,
-         "details": {"medication_id": med_id, "updated_fields": list(updates.keys())},
          "reasoning": f"caregiver edited medication {med_id}"}
     ).execute()
     return {"success": True}
@@ -757,9 +774,8 @@ async def caregiver_remove_medication(
     sb = _sb()
     sb.table("medications").update({"active": False}).eq("id", med_id).eq("patient_id", patient_id).execute()
     sb.table("audit_log").insert(
-        {"actor": current_user.app_user_id, "action": "remove_medication",
+        {"agent": current_user.app_user_id, "action": "remove_medication",
          "patient_id": patient_id,
-         "details": {"medication_id": med_id},
          "reasoning": f"caregiver removed medication {med_id}"}
     ).execute()
     return {"success": True}

@@ -4,10 +4,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  ReferenceArea, ReferenceLine, CartesianGrid,
-} from 'recharts'
 
 interface DashboardData {
   patient_id: string
@@ -17,33 +13,7 @@ interface DashboardData {
   traffic_light: 'green' | 'warning' | 'critical' | 'info'
 }
 
-interface Vital {
-  id: string
-  type: string
-  value: number
-  unit: string
-  recorded_at: string
-  source: string
-}
-
-interface MedItem {
-  id: string
-  name: string
-  dosage: string
-  schedule: { times: string[]; frequency?: string }
-  notes?: string
-  active: boolean
-}
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const GREEN = '#2D6A4F'
-
-const TRAFFIC_LIGHT_CONFIG = {
-  critical: { label: 'Critical', color: '#fee2e2', border: '#E63946', textColor: '#b91c1c' },
-  warning:  { label: 'Needs Attention', color: '#fef3c7', border: '#F4A261', textColor: '#92400e' },
-  info:     { label: 'For Your Info', color: '#eff6ff', border: '#3b82f6', textColor: '#1d4ed8' },
-  green:    { label: 'All Good', color: '#f0fdf4', border: '#52B788', textColor: '#166534' },
-}
 
 function formatRelativeTime(isoString: string | null): string {
   if (!isoString) return 'No check-ins yet'
@@ -56,136 +26,17 @@ function formatRelativeTime(isoString: string | null): string {
   return `${days}d ago`
 }
 
-function formatShortDate(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
-function VitalsChart({
-  vitals,
-  vitalType,
-  label,
-  unit,
-  normalMin,
-  normalMax,
-}: {
-  vitals: Vital[]
-  vitalType: string
-  label: string
-  unit: string
-  normalMin: number
-  normalMax: number
-}) {
-  const data = vitals
-    .filter(v => v.type === vitalType)
-    .map(v => ({
-      date: formatShortDate(v.recorded_at),
-      value: v.value,
-      isAbnormal: v.value < normalMin || v.value > normalMax,
-    }))
-
-  if (data.length === 0) {
-    return (
-      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px' }}>
-        <p style={{ fontWeight: 600, color: '#374151', marginBottom: '8px' }}>{label}</p>
-        <p style={{ color: '#9ca3af', fontSize: '15px' }}>No {label.toLowerCase()} readings this week</p>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px' }}>
-      <p style={{ fontWeight: 600, color: '#374151', marginBottom: '4px' }}>{label}</p>
-      <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '12px' }}>
-        Normal range: {normalMin}–{normalMax} {unit}
-      </p>
-      <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-          <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} />
-          <Tooltip formatter={(v) => [`${v} ${unit}`, label]} />
-          <ReferenceArea y1={normalMin} y2={normalMax} fill="#f0fdf4" fillOpacity={0.6} />
-          <ReferenceLine y={normalMin} stroke="#52B788" strokeDasharray="4 4" />
-          <ReferenceLine y={normalMax} stroke="#52B788" strokeDasharray="4 4" />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={GREEN}
-            strokeWidth={2}
-            dot={(props) => {
-              const { cx, cy, payload } = props
-              return (
-                <circle
-                  key={`dot-${cx}-${cy}`}
-                  cx={cx}
-                  cy={cy}
-                  r={5}
-                  fill={payload.isAbnormal ? '#E63946' : '#52B788'}
-                  stroke="white"
-                  strokeWidth={1.5}
-                />
-              )
-            }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
 export default function CaregiverDashboard() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [patientId, setPatientId] = useState('')
-  const [accessToken, setAccessToken] = useState('')
+  const [, setPatientId] = useState('')
+  const [, setAccessToken] = useState('')
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
+  const [patientName, setPatientName] = useState('Mdm Tan Ah Ma')
+  const [caregiverName, setCaregiverName] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-
-  // Vitals state
-  const [vitals, setVitals] = useState<Vital[]>([])
-  const [showVitalsForm, setShowVitalsForm] = useState(false)
-  const [vitalType, setVitalType] = useState('blood_glucose')
-  const [vitalValue, setVitalValue] = useState('')
-  const [isLoggingVital, setIsLoggingVital] = useState(false)
-  const [vitalLogMessage, setVitalLogMessage] = useState('')
-
-  // Medication management state
-  const [showMeds, setShowMeds] = useState(false)
-  const [medications, setMedications] = useState<MedItem[]>([])
-  const [isLoadingMeds, setIsLoadingMeds] = useState(false)
-  const [showAddMed, setShowAddMed] = useState(false)
-  const [newMedName, setNewMedName] = useState('')
-  const [newMedDosage, setNewMedDosage] = useState('')
-  const [newMedMorning, setNewMedMorning] = useState(true)
-  const [newMedEvening, setNewMedEvening] = useState(false)
-  const [newMedNotes, setNewMedNotes] = useState('')
-  const [isSavingMed, setIsSavingMed] = useState(false)
-
-  const vitalUnits: Record<string, string> = {
-    blood_glucose: 'mmol/L',
-    blood_pressure_systolic: 'mmHg',
-    blood_pressure_diastolic: 'mmHg',
-    weight: 'kg',
-  }
-
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) {
-        router.push('/caregiver/login')
-        return
-      }
-      setAccessToken(session.access_token)
-      try {
-        const payload = JSON.parse(atob(session.access_token.split('.')[1]))
-        setPatientId(payload.app_user_id || '')
-      } catch {
-        setPatientId('')
-      }
-    })
-  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -194,7 +45,11 @@ export default function CaregiverDashboard() {
       setError('')
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session || cancelled) return
+        if (!session) {
+          router.push('/caregiver/login')
+          return
+        }
+        if (cancelled) return
 
         const token = session.access_token
         setAccessToken(token)
@@ -203,31 +58,36 @@ export default function CaregiverDashboard() {
 
         const { data: caregiverData } = await supabase
           .from('caregivers')
-          .select('patient_ids')
+          .select('patient_ids, name')
           .eq('id', caregiverId)
           .single()
+
+        if (caregiverData?.name) setCaregiverName(caregiverData.name.split(' ')[0])
 
         const patientIds: string[] = caregiverData?.patient_ids ?? []
         if (!patientIds.length) {
           setError('No patient linked to your account.')
+          setIsLoading(false)
           return
         }
 
         const linkedPatientId = patientIds[0]
         setPatientId(linkedPatientId)
 
-        const [dashRes, vitalsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/dashboard`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/vitals`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ])
+        // Fetch patient name
+        const { data: patientData } = await supabase
+          .from('patients')
+          .select('name')
+          .eq('id', linkedPatientId)
+          .single()
+        if (patientData?.name) setPatientName(patientData.name)
+
+        const dashRes = await fetch(`${API_BASE}/api/caregiver/${linkedPatientId}/dashboard`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
 
         if (!cancelled) {
           if (dashRes.ok) setDashboard(await dashRes.json())
-          if (vitalsRes.ok) setVitals((await vitalsRes.json()).vitals ?? [])
         }
       } catch {
         if (!cancelled) setError('Failed to load dashboard. Please try again.')
@@ -237,385 +97,175 @@ export default function CaregiverDashboard() {
     }
     run()
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const fetchMedications = async () => {
-    if (!patientId || !accessToken) return
-    setIsLoadingMeds(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/caregiver/${patientId}/medications`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setMedications(data.medications ?? [])
-      }
-    } catch {}
-    setIsLoadingMeds(false)
-  }
-
-  const handleLogVital = async () => {
-    if (!vitalValue || !patientId || !accessToken) return
-    setIsLoggingVital(true)
-    setVitalLogMessage('')
-    try {
-      const res = await fetch(`${API_BASE}/api/caregiver/${patientId}/vitals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          vital_type: vitalType,
-          value: parseFloat(vitalValue),
-          unit: vitalUnits[vitalType],
-        }),
-      })
-      if (res.ok) {
-        const label = vitalType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-        setVitalLogMessage(`${label} logged — Baymax will mention this to the patient in their next check-in`)
-        setVitalValue('')
-        setShowVitalsForm(false)
-        // Refresh vitals
-        const vRes = await fetch(`${API_BASE}/api/caregiver/${patientId}/vitals`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        if (vRes.ok) setVitals((await vRes.json()).vitals ?? [])
-      }
-    } catch {}
-    setIsLoggingVital(false)
-  }
-
-  const handleAddMedication = async () => {
-    if (!newMedName || !newMedDosage) return
-    setIsSavingMed(true)
-    try {
-      const times: string[] = []
-      if (newMedMorning) times.push('08:00')
-      if (newMedEvening) times.push('20:00')
-      const res = await fetch(`${API_BASE}/api/caregiver/${patientId}/medications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          name: newMedName,
-          dosage: newMedDosage,
-          schedule: { times, frequency: 'daily' },
-          notes: newMedNotes || null,
-        }),
-      })
-      if (res.ok) {
-        setShowAddMed(false)
-        setNewMedName('')
-        setNewMedDosage('')
-        setNewMedMorning(true)
-        setNewMedEvening(false)
-        setNewMedNotes('')
-        await fetchMedications()
-      }
-    } catch {}
-    setIsSavingMed(false)
-  }
-
-  const handleRemoveMedication = async (medId: string) => {
-    if (!confirm('Remove this medication from the patient\'s schedule?')) return
-    try {
-      const res = await fetch(`${API_BASE}/api/caregiver/${patientId}/medications/${medId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      if (res.ok) await fetchMedications()
-    } catch {}
-  }
 
   if (isLoading) {
     return (
-      <div style={{ maxWidth: '768px', margin: '0 auto', padding: '24px' }}>
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
-          <div className="h-32 bg-gray-200 rounded-2xl" />
-          <div className="h-24 bg-gray-200 rounded-2xl" />
+          <div className="h-8 w-48 bg-gray-200 rounded-full" />
+          <div className="h-40 bg-gray-200 rounded-[20px]" />
+          <div className="h-24 bg-gray-200 rounded-[20px]" />
         </div>
-      </div>
+      </main>
     )
   }
 
-  if (error) {
-    return (
-      <div style={{ maxWidth: '768px', margin: '0 auto', padding: '24px' }}>
-        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '16px', padding: '24px', color: '#b91c1c' }}>
-          {error}
-        </div>
-      </div>
-    )
-  }
+  const statusDotColor = dashboard?.traffic_light === 'critical' ? '#E63946'
+    : dashboard?.traffic_light === 'warning' ? '#F4A261'
+    : '#52B788'
 
-  const tl = TRAFFIC_LIGHT_CONFIG[dashboard?.traffic_light ?? 'green']
+  const isStable = (dashboard?.traffic_light ?? 'green') !== 'critical'
+  const statusLabel = isStable ? 'Stable' : 'Needs Attention'
+
+  const greeting = (() => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good Morning'
+    if (hour < 18) return 'Good Afternoon'
+    return 'Good Evening'
+  })()
 
   return (
-    <div style={{ maxWidth: '768px', margin: '0 auto', padding: '16px 16px 40px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1f2937' }}>Care Dashboard</h1>
-        <p style={{ color: '#9ca3af', fontSize: '14px', marginTop: '4px' }}>Overview of your loved one&apos;s health this week</p>
-      </div>
-
-      {/* Traffic-light status */}
-      <div style={{ borderRadius: '16px', border: `2px solid ${tl.border}`, background: tl.color, padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: tl.border, flexShrink: 0 }} />
+    <main className="bg-white min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
-          <p style={{ fontSize: '22px', fontWeight: 700, color: tl.textColor }}>{tl.label}</p>
-          <p style={{ fontSize: '14px', color: tl.textColor, opacity: 0.8, marginTop: '2px' }}>
-            {dashboard?.active_alert_count
-              ? `${dashboard.active_alert_count} active alert${dashboard.active_alert_count !== 1 ? 's' : ''}`
-              : 'No active alerts'}
-          </p>
+          <p className="text-[#8f8f8f] text-lg font-medium">{greeting}</p>
+          <p className="text-black text-2xl font-bold">{caregiverName ? `${caregiverName}!` : 'Hello!'}</p>
         </div>
-      </div>
-
-      {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #f3f4f6', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px' }}>
-          <p style={{ color: '#9ca3af', fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Medication Adherence</p>
-          <p style={{ fontSize: '40px', fontWeight: 700, color: '#1f2937', marginTop: '8px', lineHeight: 1 }}>
-            {dashboard?.adherence_pct ?? 0}<span style={{ fontSize: '20px', color: '#9ca3af' }}>%</span>
-          </p>
-          <p style={{ color: '#9ca3af', fontSize: '12px', marginTop: '4px' }}>Last 7 days</p>
-        </div>
-
-        <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #f3f4f6', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px' }}>
-          <p style={{ color: '#9ca3af', fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last Check-in</p>
-          <p style={{ fontSize: '20px', fontWeight: 700, color: '#1f2937', marginTop: '8px', lineHeight: 1.3 }}>
-            {formatRelativeTime(dashboard?.last_checkin ?? null)}
-          </p>
-          {dashboard?.last_checkin && (
-            <p style={{ color: '#9ca3af', fontSize: '12px', marginTop: '4px' }}>
-              {new Date(dashboard.last_checkin).toLocaleDateString('en-SG', { weekday: 'short', month: 'short', day: 'numeric' })}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Quick links */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Link href="/caregiver/alerts" style={{ background: 'white', borderRadius: '16px', border: '1px solid #f3f4f6', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px', display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-          </div>
-          <div>
-            <p style={{ fontWeight: 600, color: '#1f2937', fontSize: '15px' }}>View Alerts</p>
-            <p style={{ color: '#9ca3af', fontSize: '13px' }}>
-              {dashboard?.active_alert_count ? `${dashboard.active_alert_count} unacknowledged` : 'No active alerts'}
-            </p>
-          </div>
-        </Link>
-
-        <Link href="/caregiver/digest" style={{ background: 'white', borderRadius: '16px', border: '1px solid #f3f4f6', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '20px', display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
-          </div>
-          <div>
-            <p style={{ fontWeight: 600, color: '#1f2937', fontSize: '15px' }}>Weekly Digest</p>
-            <p style={{ color: '#9ca3af', fontSize: '13px' }}>AI-generated summary</p>
-          </div>
-        </Link>
-      </div>
-
-      {/* Vitals Entry Panel */}
-      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-        <button
-          onClick={() => setShowVitalsForm(v => !v)}
-          style={{
-            width: '100%', padding: '18px 20px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', background: 'transparent', border: 'none', cursor: 'pointer',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-            <span style={{ fontWeight: 600, color: '#1f2937', fontSize: '16px' }}>Log Vitals</span>
-          </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showVitalsForm ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-            <polyline points="6 9 12 15 18 9" />
+        <div className="w-[60px] h-[60px] rounded-full bg-[#4894fe] flex items-center justify-center flex-shrink-0">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+            <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
           </svg>
-        </button>
+        </div>
+      </div>
 
-        {showVitalsForm && (
-          <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f3f4f6' }}>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
-              <select
-                value={vitalType}
-                onChange={e => setVitalType(e.target.value)}
-                style={{ flex: 1, padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '15px', minHeight: '44px', background: 'white' }}
-              >
-                <option value="blood_glucose">Blood Glucose (mmol/L)</option>
-                <option value="blood_pressure_systolic">Systolic BP (mmHg)</option>
-                <option value="blood_pressure_diastolic">Diastolic BP (mmHg)</option>
-                <option value="weight">Weight (kg)</option>
-              </select>
-              <input
-                type="number"
-                step="0.1"
-                value={vitalValue}
-                onChange={e => setVitalValue(e.target.value)}
-                placeholder={`Value (${vitalUnits[vitalType]})`}
-                style={{ width: '130px', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '15px', minHeight: '44px' }}
-              />
-              <button
-                onClick={handleLogVital}
-                disabled={isLoggingVital || !vitalValue}
-                style={{
-                  padding: '10px 20px', background: GREEN, color: 'white', borderRadius: '10px',
-                  fontWeight: 600, fontSize: '15px', minHeight: '44px', border: 'none',
-                  cursor: 'pointer', opacity: isLoggingVital || !vitalValue ? 0.5 : 1,
-                }}
-              >
-                {isLoggingVital ? 'Logging…' : 'Log'}
-              </button>
+      {error && (
+        <div className="mx-8 md:mx-12 mb-4 bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-6 px-8 md:px-12 pb-8">
+        {/* Status Card */}
+        <div className="bg-[#4894fe] rounded-[20px] p-6 flex flex-col gap-5">
+          {/* Label row */}
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ background: statusDotColor }} />
+            <p className="text-white text-sm font-semibold uppercase tracking-wider opacity-80">Patient Status</p>
+          </div>
+
+          {/* Status title */}
+          <div>
+            <p className="text-white text-3xl font-bold">{statusLabel}</p>
+            <p className="text-white text-base opacity-70 mt-1">{patientName}</p>
+            <p className="text-white text-sm opacity-60 mt-0.5">
+              Last seen: {formatRelativeTime(dashboard?.last_checkin ?? null)}
+            </p>
+          </div>
+
+          {/* Stats boxes */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[rgba(255,255,255,0.2)] rounded-[15px] px-4 py-3">
+              <p className="text-white text-3xl font-bold">
+                {dashboard?.adherence_pct ?? 0}
+                <span className="text-lg opacity-70">%</span>
+              </p>
+              <p className="text-white text-xs opacity-70 mt-1">Med Adherence</p>
+            </div>
+            <div className="bg-[rgba(255,255,255,0.2)] rounded-[15px] px-4 py-3">
+              <p className="text-white text-3xl font-bold">{dashboard?.active_alert_count ?? 0}</p>
+              <p className="text-white text-xs opacity-70 mt-1">Alerts This Week</p>
             </div>
           </div>
-        )}
+        </div>
 
-        {vitalLogMessage && (
-          <div style={{ margin: '0 20px 16px', padding: '12px 16px', background: '#f0fdf4', borderRadius: '10px', color: '#166534', fontSize: '14px', border: '1px solid #bbf7d0' }}>
-            ✓ {vitalLogMessage}
+        {/* Warning card — shown only when there are active alerts */}
+        {(dashboard?.active_alert_count ?? 0) > 0 && (
+          <div className="bg-[#464646] rounded-[20px] p-6 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-yellow-400" />
+              <p className="text-white text-sm font-semibold uppercase tracking-wider opacity-80">Warning</p>
+            </div>
+            <p className="text-white text-base font-medium">
+              {dashboard?.active_alert_count} active alert{(dashboard?.active_alert_count ?? 0) !== 1 ? 's' : ''} require{(dashboard?.active_alert_count ?? 0) === 1 ? 's' : ''} your attention.
+            </p>
+            <Link
+              href="/caregiver/alerts"
+              className="bg-[rgba(255,255,255,0.15)] rounded-[15px] px-4 py-3 text-white text-sm font-medium text-center"
+              style={{ minHeight: '0', minWidth: '0' }}
+            >
+              View Alerts
+            </Link>
           </div>
         )}
-      </div>
 
-      {/* Vital Trends */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h2 style={{ fontSize: '17px', fontWeight: 600, color: '#374151' }}>Vital Trends (7 days)</h2>
-        <VitalsChart vitals={vitals} vitalType="blood_glucose" label="Blood Glucose" unit="mmol/L" normalMin={4} normalMax={10} />
-        <VitalsChart vitals={vitals} vitalType="blood_pressure_systolic" label="Systolic Blood Pressure" unit="mmHg" normalMin={90} normalMax={140} />
-      </div>
+        {/* Quick Access label */}
+        <p className="text-[#b4b4b4] text-sm font-semibold uppercase tracking-wider">Quick Access</p>
 
-      {/* Medication Management */}
-      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-        <button
-          onClick={() => { setShowMeds(v => !v); if (!showMeds) fetchMedications() }}
-          style={{
-            width: '100%', padding: '18px 20px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', background: 'transparent', border: 'none', cursor: 'pointer',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4m0-6h6m0 0v6m0-6h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4m-6 0v-6" />
+        {/* Quick access cards */}
+        <div className="grid grid-cols-2 gap-4">
+          <Link
+            href="/caregiver/alerts"
+            className="bg-[#4894fe] rounded-[20px] p-5 flex flex-col gap-3"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
             </svg>
-            <span style={{ fontWeight: 600, color: '#1f2937', fontSize: '16px' }}>Medications</span>
+            <div>
+              <p className="text-white text-base font-bold">Alert</p>
+              <p className="text-white text-xs opacity-70 mt-0.5">
+                {dashboard?.active_alert_count
+                  ? `${dashboard.active_alert_count} unacknowledged`
+                  : 'No active alerts'}
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/caregiver/digest"
+            className="bg-[#464646] rounded-[20px] p-5 flex flex-col gap-3"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path fillRule="evenodd" d="M5.625 1.5c-1.036 0-1.875.84-1.875 1.875v17.25c0 1.035.84 1.875 1.875 1.875h12.75c1.035 0 1.875-.84 1.875-1.875V12.75A3.75 3.75 0 0016.5 9h-1.875a1.875 1.875 0 01-1.875-1.875V5.25A3.75 3.75 0 009 1.5H5.625zM7.5 15a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5A.75.75 0 017.5 15zm.75-6.75a.75.75 0 000 1.5H12a.75.75 0 000-1.5H8.25z" clipRule="evenodd" />
+              <path d="M12.971 1.816A5.23 5.23 0 0114.25 5.25v1.875c0 .207.168.375.375.375H16.5a5.23 5.23 0 013.434 1.279 9.768 9.768 0 00-6.963-6.963z" />
+            </svg>
+            <div>
+              <p className="text-white text-base font-bold">Weekly Digest</p>
+              <p className="text-white text-xs opacity-70 mt-0.5">AI-generated summary</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Last check-in card */}
+        <div className="bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)] flex items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-[#eef6ff] flex items-center justify-center flex-shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#4894fe">
+                <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 011.04-.207z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-black text-base font-bold">Last check-in</p>
+              <p className="text-[#b4b4b4] text-sm">
+                {dashboard?.last_checkin
+                  ? new Date(dashboard.last_checkin).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })
+                  : 'No check-ins yet'}
+              </p>
+            </div>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showMeds ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-
-        {showMeds && (
-          <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f3f4f6' }}>
-            {isLoadingMeds ? (
-              <p style={{ color: '#9ca3af', padding: '16px 0' }} className="animate-pulse">Loading medications…</p>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-                  {medications.map(med => (
-                    <div key={med.id} style={{ border: '1px solid #f3f4f6', borderRadius: '12px', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                      <div>
-                        <p style={{ fontWeight: 600, color: '#1f2937', fontSize: '16px' }}>{med.name}</p>
-                        <p style={{ color: '#6b7280', fontSize: '14px' }}>{med.dosage}</p>
-                        {med.schedule?.times?.length > 0 && (
-                          <p style={{ color: '#9ca3af', fontSize: '13px' }}>
-                            {med.schedule.times.join(', ')}
-                          </p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleRemoveMedication(med.id)}
-                          style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fee2e2', color: '#b91c1c', fontSize: '13px', fontWeight: 500, cursor: 'pointer', minHeight: '36px' }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {medications.length === 0 && (
-                    <p style={{ color: '#9ca3af', fontSize: '15px', padding: '8px 0' }}>No medications on record.</p>
-                  )}
-                </div>
-
-                {/* Add medication form */}
-                {!showAddMed ? (
-                  <button
-                    onClick={() => setShowAddMed(true)}
-                    style={{ marginTop: '14px', padding: '10px 20px', background: GREEN, color: 'white', borderRadius: '10px', fontWeight: 600, fontSize: '15px', border: 'none', cursor: 'pointer', minHeight: '44px' }}
-                  >
-                    + Add Medication
-                  </button>
-                ) : (
-                  <div style={{ marginTop: '16px', padding: '16px', background: '#f9fafb', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <p style={{ fontWeight: 600, color: '#374151', fontSize: '15px' }}>New Medication</p>
-                    <input
-                      type="text"
-                      placeholder="Medication name"
-                      value={newMedName}
-                      onChange={e => setNewMedName(e.target.value)}
-                      style={{ padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '15px', minHeight: '44px' }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Dosage (e.g. 500mg)"
-                      value={newMedDosage}
-                      onChange={e => setNewMedDosage(e.target.value)}
-                      style={{ padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '15px', minHeight: '44px' }}
-                    />
-                    <div style={{ display: 'flex', gap: '16px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '15px', color: '#374151', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={newMedMorning} onChange={e => setNewMedMorning(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                        Morning (8am)
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '15px', color: '#374151', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={newMedEvening} onChange={e => setNewMedEvening(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                        Evening (8pm)
-                      </label>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Notes (optional, e.g. Take with food)"
-                      value={newMedNotes}
-                      onChange={e => setNewMedNotes(e.target.value)}
-                      style={{ padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '15px', minHeight: '44px' }}
-                    />
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button
-                        onClick={handleAddMedication}
-                        disabled={isSavingMed || !newMedName || !newMedDosage}
-                        style={{ flex: 1, padding: '10px', background: GREEN, color: 'white', borderRadius: '10px', fontWeight: 600, fontSize: '15px', border: 'none', cursor: 'pointer', opacity: isSavingMed || !newMedName || !newMedDosage ? 0.5 : 1, minHeight: '44px' }}
-                      >
-                        {isSavingMed ? 'Saving…' : 'Save Medication'}
-                      </button>
-                      <button
-                        onClick={() => setShowAddMed(false)}
-                        style={{ padding: '10px 16px', background: 'white', color: '#6b7280', borderRadius: '10px', fontWeight: 500, fontSize: '15px', border: '1px solid #e5e7eb', cursor: 'pointer', minHeight: '44px' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+          <Link
+            href="/caregiver/alerts"
+            className="bg-[#4894fe] text-white text-sm font-semibold px-5 py-2 rounded-[15px]"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            View
+          </Link>
+        </div>
       </div>
-
-      <p style={{ fontSize: '12px', color: '#d1d5db', textAlign: 'center', paddingBottom: '8px' }}>
-        Baymax AI summaries are for informational purposes only — not medical advice.
-      </p>
-    </div>
+    </main>
   )
 }

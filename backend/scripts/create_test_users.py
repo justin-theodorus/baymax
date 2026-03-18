@@ -2,7 +2,7 @@
 """
 Phase 9 — Create test users for each stakeholder.
 
-Creates three demo auth accounts in Supabase and links them to
+Creates demo auth accounts in Supabase and links them to
 the corresponding application records (patient, caregiver, clinician).
 
 Usage:
@@ -10,9 +10,10 @@ Usage:
     python scripts/create_test_users.py
 
 Demo credentials created:
-    Patient   — patient@baymax.demo   / BaymaxDemo2026!
-    Caregiver — caregiver@baymax.demo / BaymaxDemo2026!
-    Clinician — clinician@baymax.demo / BaymaxDemo2026!
+    Patient    — patient@baymax.demo    / BaymaxDemo2026!
+    Caregiver  — caregiver@baymax.demo  / BaymaxDemo2026!
+    Caregiver2 — caregiver2@baymax.demo / BaymaxDemo2026!
+    Clinician  — clinician@baymax.demo  / BaymaxDemo2026!
 """
 
 import sys
@@ -24,9 +25,12 @@ from app.config import settings
 from supabase import create_client
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-PATIENT_APP_ID   = "a1b2c3d4-0000-0000-0000-000000000001"
-CAREGIVER_APP_ID = "b1b2c3d4-0000-0000-0000-000000000002"
-CLINICIAN_APP_ID = "d1b2c3d4-0000-0000-0000-000000000010"
+PATIENT_APP_ID    = "a1b2c3d4-0000-0000-0000-000000000001"
+PATIENT_LIM_ID    = "a2b2c3d4-0000-0000-0000-000000000002"
+PATIENT_KAMALA_ID = "a3b2c3d4-0000-0000-0000-000000000003"
+CAREGIVER_APP_ID  = "b1b2c3d4-0000-0000-0000-000000000002"
+CAREGIVER2_APP_ID = "b2b2c3d4-0000-0000-0000-000000000009"
+CLINICIAN_APP_ID  = "d1b2c3d4-0000-0000-0000-000000000010"
 
 DEMO_PASSWORD = "BaymaxDemo2026!"
 
@@ -44,6 +48,13 @@ USERS = [
         "app_id":   CAREGIVER_APP_ID,
         "table":    "caregivers",
         "label":    "Tan Wei Ling (caregiver)",
+    },
+    {
+        "email":    "caregiver2@baymax.demo",
+        "role":     "caregiver",
+        "app_id":   CAREGIVER2_APP_ID,
+        "table":    "caregivers",
+        "label":    "Lim Wei Ming (caregiver 2)",
     },
     {
         "email":    "clinician@baymax.demo",
@@ -75,11 +86,23 @@ def main() -> None:
             "id":         CLINICIAN_APP_ID,
             "name":       "Dr. Tan Wei Jie",
             "specialty":  "Family Medicine",
-            "patient_ids": [PATIENT_APP_ID],
+            "patient_ids": [PATIENT_APP_ID, PATIENT_LIM_ID, PATIENT_KAMALA_ID],
         }).execute()
         print(f"  ✓  Created clinician app record ({CLINICIAN_APP_ID})")
     else:
         print(f"  –  Clinician app record already exists")
+
+    # ── Ensure caregiver2 app record exists ───────────────────────────────────
+    # This record is also created by reset_demo.py, but create_test_users.py
+    # may run first, so we upsert it here to guarantee the link works.
+    admin.table("caregivers").upsert({
+        "id":           CAREGIVER2_APP_ID,
+        "name":         "Lim Wei Ming",
+        "relationship": "Son",
+        "patient_ids":  [PATIENT_LIM_ID],
+        "telegram_chat_id": None,
+    }).execute()
+    print(f"  ✓  Ensured caregiver2 app record exists ({CAREGIVER2_APP_ID})")
 
     # ── Create / update auth users ────────────────────────────────────────────
     for u in USERS:
@@ -122,14 +145,17 @@ def main() -> None:
     print("=" * 60)
     print("Demo credentials")
     print("=" * 60)
-    print(f"  Patient   →  patient@baymax.demo   / {DEMO_PASSWORD}")
-    print(f"              Login at: http://localhost:3000/patient/login")
+    print(f"  Patient    →  patient@baymax.demo    / {DEMO_PASSWORD}")
+    print(f"               Login at: http://localhost:3000/patient/login")
     print()
-    print(f"  Caregiver →  caregiver@baymax.demo / {DEMO_PASSWORD}")
-    print(f"              Login at: http://localhost:3000/caregiver/login")
+    print(f"  Caregiver  →  caregiver@baymax.demo  / {DEMO_PASSWORD}")
+    print(f"               Login at: http://localhost:3000/caregiver/login")
     print()
-    print(f"  Clinician →  clinician@baymax.demo / {DEMO_PASSWORD}")
-    print(f"              Login at: http://localhost:3000/clinician/login")
+    print(f"  Caregiver2 →  caregiver2@baymax.demo / {DEMO_PASSWORD}")
+    print(f"               Login at: http://localhost:3000/caregiver/login")
+    print()
+    print(f"  Clinician  →  clinician@baymax.demo  / {DEMO_PASSWORD}")
+    print(f"               Login at: http://localhost:3000/clinician/login")
     print("=" * 60)
     print()
     print("NOTE: The Supabase JWT custom-claims hook must be configured")

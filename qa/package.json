@@ -1,0 +1,17 @@
+{
+  "name": "baymax-qa",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:patient": "playwright test tests/patient.spec.ts",
+    "test:caregiver": "playwright test tests/caregiver.spec.ts",
+    "test:clinician": "playwright test tests/clinician.spec.ts",
+    "test:auth": "playwright test tests/auth.spec.ts",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.43.0"
+  }
+}

@@ -38,13 +38,6 @@ interface MedsData {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-const MED_COLORS = ['#E8634A', '#2D6A4F', '#3B4F7A', '#F4A261', '#52B788', '#9B59B6']
-
-function getMedColor(name: string): string {
-  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-  return MED_COLORS[hash % MED_COLORS.length]
-}
-
 function formatTime(timeStr: string): string {
   const [h, m] = timeStr.split(':').map(Number)
   const ampm = h >= 12 ? 'PM' : 'AM'
@@ -52,26 +45,12 @@ function formatTime(timeStr: string): string {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
-function getNextDoseTime(med: Medication): string | null {
-  const now = new Date()
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
-  const times = med.schedule?.times ?? []
-  if (!times.length) return null
-
-  for (const t of times) {
-    const [h, m] = t.split(':').map(Number)
-    const mins = h * 60 + m
-    if (mins > currentMinutes) return formatTime(t)
-  }
-  return formatTime(times[0]) // next day
-}
-
-function CheckIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-      <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
-    </svg>
-  )
+function getScheduleLabel(med: Medication): string {
+  const freq = med.schedule?.frequency ?? ''
+  const times = med.schedule?.times?.map(formatTime).join(', ') ?? ''
+  if (freq && times) return `${freq.charAt(0).toUpperCase() + freq.slice(1)} · ${times}`
+  if (times) return times
+  return freq
 }
 
 export default function MedicationsPage() {
@@ -80,7 +59,6 @@ export default function MedicationsPage() {
 
   const [patientId, setPatientId] = useState('')
   const [accessToken, setAccessToken] = useState('')
-  const [language, setLanguage] = useState<'en' | 'zh'>('en')
   const [medsData, setMedsData] = useState<MedsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [markingId, setMarkingId] = useState<string | null>(null)
@@ -100,6 +78,7 @@ export default function MedicationsPage() {
         setPatientId('')
       }
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchMeds = useCallback(async () => {
@@ -114,11 +93,11 @@ export default function MedicationsPage() {
       const data: MedsData = await res.json()
       setMedsData(data)
     } catch {
-      setError(language === 'zh' ? '加载失败，请重试' : 'Failed to load medications. Please try again.')
+      setError('Failed to load medications. Please try again.')
     } finally {
       setIsLoading(false)
     }
-  }, [patientId, accessToken, language])
+  }, [patientId, accessToken])
 
   useEffect(() => {
     if (patientId && accessToken) fetchMeds()
@@ -130,10 +109,9 @@ export default function MedicationsPage() {
 
     setMedsData(prev => {
       if (!prev) return prev
-      const now = new Date().toISOString()
       return {
         ...prev,
-        taken_today: [...prev.taken_today, { ...med, taken_at: now } as Medication],
+        taken_today: [...prev.taken_today, { ...med }],
         pending_today: prev.pending_today.filter(m => m.id !== med.id),
       }
     })
@@ -155,24 +133,11 @@ export default function MedicationsPage() {
     }
   }
 
-  const t = {
-    title: language === 'zh' ? '今日药物' : "Today's Medications",
-    taken: language === 'zh' ? '已服用' : 'Taken',
-    pending: language === 'zh' ? '待服用' : 'Pending',
-    overdue: language === 'zh' ? '已过期' : 'Overdue',
-    loading: language === 'zh' ? '加载中…' : 'Loading medications…',
-    allDone: language === 'zh' ? '今日所有药物已服用！' : 'All medications taken today!',
-    noMeds: language === 'zh' ? '今日无药物' : 'No medications scheduled today',
-    scheduledAt: language === 'zh' ? '预定时间' : 'Scheduled',
-    takenAt: language === 'zh' ? '服用时间' : 'Taken at',
-    nextDose: language === 'zh' ? '下次服药' : 'Next dose',
-  }
-
   if (isLoading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: '#9ca3af', fontSize: '22px' }} className="animate-pulse">{t.loading}</p>
-      </div>
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
+        <p className="text-[#b4b4b4] text-lg animate-pulse">Loading medications…</p>
+      </main>
     )
   }
 
@@ -180,183 +145,109 @@ export default function MedicationsPage() {
   const takenMeds = medsData?.taken_today ?? []
 
   return (
-    <main style={{ background: '#F7F5F2', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-      {/* Page title row */}
-      <div style={{ padding: '20px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1f2937' }}>{t.title}</h1>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          {(['en', 'zh'] as const).map(lang => (
-            <button
-              key={lang}
-              onClick={() => setLanguage(lang)}
-              style={{
-                padding: '4px 14px',
-                borderRadius: '999px',
-                fontSize: '16px',
-                fontWeight: 600,
-                background: language === lang ? '#E8634A' : 'white',
-                color: language === lang ? 'white' : '#E8634A',
-                border: '1.5px solid #E8634A',
-                minHeight: '36px',
-              }}
-            >
-              {lang === 'en' ? 'EN' : '中文'}
-            </button>
-          ))}
-        </div>
+    <main className="bg-white min-h-screen">
+      {/* Header */}
+      <div className="px-8 md:px-12 pt-12 md:pt-16 pb-6">
+        <p className="text-[#8f8f8f] text-lg font-medium">Don&apos;t forget to take your meds!</p>
+        <p className="text-black text-2xl font-bold">Medication</p>
       </div>
 
-      <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-8 md:px-12 pb-8">
         {error && (
-          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '16px', padding: '16px', color: '#b91c1c', fontSize: '18px' }}>
+          <div className="md:col-span-2 bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
             {error}
           </div>
         )}
 
-        {/* Pending / Overdue */}
-        {pendingMeds.length > 0 && (
-          <section>
-            <h2 style={{ color: '#6b7280', fontWeight: 600, fontSize: '18px', marginBottom: '10px' }}>
-              {pendingMeds.some(m => m.overdue) ? `⚠ ${t.overdue}` : t.pending}
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {pendingMeds.map(med => {
-                const color = getMedColor(med.name)
-                const nextDose = getNextDoseTime(med)
-                return (
-                  <div
-                    key={med.id}
-                    style={{
-                      background: 'white',
-                      borderRadius: '16px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      padding: '16px 16px 16px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                      minHeight: '80px',
-                      borderLeft: `4px solid ${med.overdue ? '#E63946' : color}`,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0, paddingLeft: '16px' }}>
-                      <p style={{ fontWeight: 700, color: '#1f2937', fontSize: '22px', marginBottom: '2px' }}>{med.name}</p>
-                      <p style={{ color: '#6b7280', fontSize: '17px' }}>{med.dosage}</p>
-                      <p style={{ color: med.overdue ? '#E63946' : '#9ca3af', fontSize: '15px', marginTop: '2px' }}>
-                        {t.scheduledAt}: {med.schedule?.times?.map(formatTime).join(', ') ?? '—'}
-                      </p>
-                      {nextDose && !med.overdue && (
-                        <p style={{ color: '#52B788', fontSize: '15px', fontWeight: 500 }}>
-                          {t.nextDose}: {nextDose}
-                        </p>
-                      )}
-                      {med.notes && (
-                        <p style={{ color: '#9ca3af', fontSize: '14px', fontStyle: 'italic', marginTop: '2px' }}>{med.notes}</p>
-                      )}
-                    </div>
-                    {/* Large checkbox button */}
-                    <button
-                      onClick={() => markAsTaken(med)}
-                      disabled={markingId === med.id}
-                      style={{
-                        width: '56px',
-                        height: '56px',
-                        borderRadius: '50%',
-                        background: markingId === med.id ? '#e5e7eb' : (med.overdue ? '#E63946' : color),
-                        color: 'white',
-                        border: 'none',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        marginRight: '8px',
-                        transition: 'transform 0.15s, background 0.2s',
-                        transform: markingId === med.id ? 'scale(0.9)' : 'scale(1)',
-                      }}
-                      aria-label="Mark as taken"
-                    >
-                      {markingId === med.id ? (
-                        <div style={{ width: '20px', height: '20px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%' }} className="animate-spin" />
-                      ) : (
-                        <CheckIcon />
-                      )}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )}
+        {/* Pending / Overdue meds */}
+        {pendingMeds.map((med, i) => {
+          const bgColor = i === 0 ? '#4894fe' : '#464646'
+          const isOverdue = med.overdue
+          const timeStr = med.schedule?.times?.[0] ? formatTime(med.schedule.times[0]) : ''
+          const timeColor = isOverdue ? '#ff7878' : 'rgba(255,255,255,0.8)'
+          return (
+            <button
+              key={med.id}
+              onClick={() => markAsTaken(med)}
+              disabled={markingId === med.id}
+              className="rounded-[20px] flex items-center justify-between px-8 py-5 text-left transition-opacity active:opacity-80"
+              style={{ background: bgColor, minHeight: '0', minWidth: '0' }}
+            >
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full border-2 border-[rgba(255,255,255,0.3)] flex items-center justify-center flex-shrink-0">
+                  {markingId === med.id ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full border-2 border-[rgba(255,255,255,0.5)]" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-white text-lg font-bold">{med.name}</p>
+                  <p className="text-white text-sm font-normal opacity-80">{getScheduleLabel(med)}</p>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill={timeColor}>
+                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 000-1.5h-3.75V6z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm font-normal" style={{ color: timeColor }}>{timeStr}</p>
+                </div>
+                {isOverdue && (
+                  <span className="text-xs font-semibold" style={{ color: '#ff7878' }}>Overdue</span>
+                )}
+                <p className="text-white text-xs opacity-60">Tap to mark taken</p>
+              </div>
+            </button>
+          )
+        })}
 
-        {/* Taken */}
-        {takenMeds.length > 0 && (
-          <section>
-            <h2 style={{ color: '#6b7280', fontWeight: 600, fontSize: '18px', marginBottom: '10px' }}>
-              ✓ {t.taken}
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {takenMeds.map(med => {
-                const log = medsData?.logs.find(l => l.medication_id === med.id && l.taken)
-                const takenAt = log?.taken_at
-                  ? new Date(log.taken_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : null
-                const color = getMedColor(med.name)
-                return (
-                  <div
-                    key={med.id}
-                    style={{
-                      background: 'white',
-                      borderRadius: '16px',
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                      padding: '16px 16px 16px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                      minHeight: '72px',
-                      borderLeft: `4px solid ${color}`,
-                      opacity: 0.65,
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0, paddingLeft: '16px' }}>
-                      <p style={{ fontWeight: 700, color: '#374151', fontSize: '22px' }}>{med.name}</p>
-                      <p style={{ color: '#9ca3af', fontSize: '17px' }}>{med.dosage}</p>
-                      {takenAt && (
-                        <p style={{ color: '#52B788', fontSize: '15px', fontWeight: 500, marginTop: '2px' }}>
-                          {t.takenAt}: {takenAt}
-                        </p>
-                      )}
-                    </div>
-                    <div style={{
-                      width: '40px', height: '40px', borderRadius: '50%',
-                      background: '#52B788', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', flexShrink: 0, marginRight: '12px',
-                    }}>
-                      <CheckIcon />
-                    </div>
-                  </div>
-                )
-              })}
+        {/* Taken meds */}
+        {takenMeds.map((med, i) => {
+          const bgColor = pendingMeds.length === 0 && i === 0 ? '#4894fe' : '#464646'
+          const log = medsData?.logs.find(l => l.medication_id === med.id && l.taken)
+          const takenAt = log?.taken_at
+            ? new Date(log.taken_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : null
+          return (
+            <div
+              key={med.id}
+              className="rounded-[20px] flex items-center justify-between px-8 py-5 opacity-60"
+              style={{ background: bgColor }}
+            >
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full border-2 border-[rgba(255,255,255,0.3)] flex items-center justify-center flex-shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                    <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 011.04-.207z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-white text-lg font-bold">{med.name}</p>
+                  <p className="text-white text-sm font-normal opacity-80">{getScheduleLabel(med)}</p>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <p className="text-white text-base font-medium">Taken</p>
+                {takenAt && (
+                  <p className="text-white text-xs opacity-70">{takenAt}</p>
+                )}
+              </div>
             </div>
-          </section>
-        )}
+          )
+        })}
 
-        {/* All done */}
+        {/* All done state */}
         {pendingMeds.length === 0 && takenMeds.length > 0 && (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <p style={{ color: '#52B788', fontWeight: 700, fontSize: '26px' }}>
-              {language === 'zh' ? '🎉 今日所有药物已服用！' : '🎉 All medications taken today!'}
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '18px', marginTop: '8px' }}>
-              {language === 'zh' ? '做得好！' : 'Great job!'}
-            </p>
+          <div className="md:col-span-2 text-center py-8">
+            <p className="text-[#52B788] font-bold text-xl">All medications taken today!</p>
+            <p className="text-[#b4b4b4] text-base mt-2">Great job!</p>
           </div>
         )}
 
         {/* No medications */}
         {pendingMeds.length === 0 && takenMeds.length === 0 && !isLoading && (
-          <div style={{ textAlign: 'center', padding: '48px 0' }}>
-            <p style={{ color: '#9ca3af', fontSize: '22px' }}>{t.noMeds}</p>
+          <div className="md:col-span-2 text-center py-12">
+            <p className="text-[#b4b4b4] text-lg">No medications scheduled today</p>
           </div>
         )}
       </div>

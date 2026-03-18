@@ -3,90 +3,99 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const CORAL = '#E8634A'
+const BLUE = '#4894fe'
+const GRAY = '#9ca3af'
+
+const HomeIcon = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? BLUE : GRAY}>
+    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+  </svg>
+)
+
+const MedsIcon = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? BLUE : GRAY}>
+    <path fillRule="evenodd" d="M6.25 6.375a4.125 4.125 0 118.25 0 4.125 4.125 0 01-8.25 0zM3.25 19.125a7.125 7.125 0 0114.25 0v.003l-.001.119a.75.75 0 01-.363.63 13.067 13.067 0 01-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 01-.364-.63l-.001-.122zM19.75 7.5a.75.75 0 00-1.5 0v2.25H16a.75.75 0 000 1.5h2.25v2.25a.75.75 0 001.5 0v-2.25H22a.75.75 0 000-1.5h-2.25V7.5z" clipRule="evenodd" />
+  </svg>
+)
+
+const SparkleIcon = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? BLUE : GRAY}>
+    <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423L16.5 15.75l.394 1.183a2.25 2.25 0 001.423 1.423L19.5 18.75l-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+  </svg>
+)
 
 const tabs = [
-  {
-    href: '/patient',
-    label: 'Home',
-    labelZh: '主页',
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="30" height="30">
-        <path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z" />
-        <path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/patient/medications',
-    label: 'Medications',
-    labelZh: '药物',
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="30" height="30">
-        <path d="M6.25 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM3.25 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.122ZM19.75 7.5a.75.75 0 0 0-1.5 0v2.25H16a.75.75 0 0 0 0 1.5h2.25v2.25a.75.75 0 0 0 1.5 0v-2.25H22a.75.75 0 0 0 0-1.5h-2.25V7.5Z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/patient/history',
-    label: 'History',
-    labelZh: '记录',
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="30" height="30">
-        <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
+  { href: '/patient', label: 'Home', Icon: HomeIcon, exact: true },
+  { href: '/patient/medications', label: 'Meds', Icon: MedsIcon, exact: false },
+  { href: '/patient/chat', label: 'Baymax', Icon: SparkleIcon, exact: false },
 ]
 
-interface BottomNavProps {
-  language?: 'en' | 'zh'
-}
-
-export function BottomNav({ language = 'en' }: BottomNavProps) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function BottomNav({ language = 'en' }: { language?: 'en' | 'zh' }) {
   const pathname = usePathname()
-
-  const isActive = (href: string) => {
-    if (href === '/patient') return pathname === '/patient'
-    return pathname.startsWith(href)
-  }
+  const isActive = (href: string, exact: boolean) =>
+    exact ? pathname === href : pathname.startsWith(href)
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 bg-white flex items-stretch z-50"
-      style={{ minHeight: '72px', borderTop: '1px solid #e5e7eb' }}
-    >
-      {tabs.map((tab) => {
-        const active = isActive(tab.href)
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className="flex-1 flex flex-col items-center justify-center gap-1 transition-colors"
-            style={{
-              minHeight: '72px',
-              minWidth: '48px',
-              color: active ? CORAL : '#9ca3af',
-              position: 'relative',
-            }}
-          >
-            {active && (
-              <div style={{
-                position: 'absolute',
-                top: '6px',
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: CORAL,
-              }} />
-            )}
-            <span>{tab.icon}</span>
-            <span style={{ fontSize: '14px', fontWeight: active ? 600 : 400 }}>
-              {language === 'zh' ? tab.labelZh : tab.label}
-            </span>
-          </Link>
-        )
-      })}
-    </nav>
+    <>
+      {/* Mobile bottom bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+        <div
+          className="w-full max-w-[600px] bg-white border-t border-[#e4e4e4] flex items-center justify-around px-4 py-4"
+          style={{ minHeight: '80px' }}
+        >
+          {tabs.map(({ href, label, Icon, exact }) => {
+            const active = isActive(href, exact)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center justify-center"
+                style={{ minHeight: '48px', minWidth: '48px' }}
+              >
+                {active ? (
+                  <div className="flex items-center gap-2 bg-[#eef6ff] rounded-[15px] px-4 py-3">
+                    <Icon active />
+                    <span className="text-[#4894fe] font-medium text-base">{label}</span>
+                  </div>
+                ) : (
+                  <Icon active={false} />
+                )}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-white border-r border-[#e4e4e4] z-50 flex-col">
+        {/* Header */}
+        <div className="px-6 py-8">
+          <p className="text-[#4894fe] text-xl font-bold">Baymax</p>
+          <p className="text-[#8f8f8f] text-sm mt-1">AI Care Companion</p>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex flex-col gap-2 px-4 flex-1">
+          {tabs.map(({ href, label, Icon, exact }) => {
+            const active = isActive(href, exact)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={
+                  active
+                    ? 'flex items-center gap-3 bg-[#eef6ff] rounded-[15px] px-4 py-3 text-[#4894fe] font-medium'
+                    : 'flex items-center gap-3 px-4 py-3 text-[#9ca3af]'
+                }
+              >
+                <Icon active={active} />
+                <span className="text-base">{label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
+    </>
   )
 }

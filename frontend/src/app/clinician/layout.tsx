@@ -1,21 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { ClinicianNav } from '@/components/clinician/clinician-nav'
 
-export default async function ClinicianLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/clinician/login')
-  }
-
+export default function ClinicianLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', flexDirection: 'column' }}>
+    <div className="flex min-h-screen bg-[#f5f5f5] md:bg-white">
       <ClinicianNav />
-      <main className="flex-1">
-        {children}
-      </main>
+      <div className="flex-1 md:ml-64 overflow-y-auto pb-[100px] md:pb-0">
+        <div className="mx-auto max-w-[600px] md:max-w-none bg-white min-h-screen">
+          {children}
+        </div>
+      </div>
     </div>
   )
 }

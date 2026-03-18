@@ -15,17 +15,18 @@ interface Alert {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-const SEVERITY_STYLE = {
-  critical: { border: '#E63946', bg: '#fff5f5', label: 'Critical', labelBg: '#fee2e2', labelColor: '#b91c1c' },
-  warning:  { border: '#F4A261', bg: '#fffbf5', label: 'Warning',  labelBg: '#fef3c7', labelColor: '#92400e' },
-  info:     { border: '#52B788', bg: '#f0fdf4', label: 'Info',     labelBg: '#dcfce7', labelColor: '#166534' },
-}
-
 function formatDateTime(isoString: string): string {
   return new Date(isoString).toLocaleString('en-SG', {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good Morning'
+  if (hour < 18) return 'Good Afternoon'
+  return 'Good Evening'
 }
 
 export default function AlertsPage() {
@@ -34,6 +35,7 @@ export default function AlertsPage() {
 
   const [patientId, setPatientId] = useState('')
   const [accessToken, setAccessToken] = useState('')
+  const [caregiverName, setCaregiverName] = useState('')
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -53,9 +55,11 @@ export default function AlertsPage() {
 
         const { data: caregiverData } = await supabase
           .from('caregivers')
-          .select('patient_ids')
+          .select('patient_ids, name')
           .eq('id', caregiverId)
           .single()
+
+        if (caregiverData?.name) setCaregiverName(caregiverData.name.split(' ')[0])
 
         const patientIds: string[] = caregiverData?.patient_ids ?? []
         if (patientIds.length) {
@@ -65,6 +69,7 @@ export default function AlertsPage() {
         setPatientId('')
       }
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchAlerts = useCallback(async () => {
@@ -112,153 +117,145 @@ export default function AlertsPage() {
 
   if (isLoading) {
     return (
-      <div style={{ maxWidth: '768px', margin: '0 auto', padding: '24px' }}>
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-gray-200 rounded-2xl" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-200 rounded-[20px]" />)}
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div style={{ maxWidth: '768px', margin: '0 auto', padding: '16px 16px 40px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <main className="bg-white min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1f2937' }}>Alerts</h1>
-          <p style={{ color: '#9ca3af', fontSize: '14px', marginTop: '4px' }}>
-            {activeAlerts.length > 0
-              ? `${activeAlerts.length} active alert${activeAlerts.length !== 1 ? 's' : ''}`
-              : 'No active alerts'}
-          </p>
+          <p className="text-[#8f8f8f] text-lg font-medium">{getGreeting()}</p>
+          <p className="text-black text-2xl font-bold">{caregiverName ? `${caregiverName}!` : 'Hello!'}</p>
         </div>
-        <button
-          onClick={fetchAlerts}
-          style={{ padding: '8px 16px', borderRadius: '10px', border: '1px solid #e5e7eb', background: 'white', color: '#2D6A4F', fontSize: '14px', fontWeight: 500, cursor: 'pointer', minHeight: '40px' }}
-        >
-          Refresh
-        </button>
-      </div>
-
-      {error && (
-        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '16px', color: '#b91c1c', fontSize: '15px' }}>
-          {error}
-        </div>
-      )}
-
-      {/* Active alerts */}
-      {activeAlerts.length > 0 && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active</h2>
-          {activeAlerts.map(alert => {
-            const cfg = SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.info
-            // Extract a bold summary (first sentence or first 80 chars)
-            const boldSummary = alert.summary.split('.')[0] || alert.summary.slice(0, 80)
-            const restSummary = alert.summary.slice(boldSummary.length).replace(/^[.]\s*/, '').trim()
-
-            return (
-              <div
-                key={alert.id}
-                style={{
-                  background: cfg.bg,
-                  borderRadius: '16px',
-                  borderLeft: `4px solid ${cfg.border}`,
-                  padding: '18px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                }}
-              >
-                {/* Header row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <span style={{ background: cfg.labelBg, color: cfg.labelColor, fontSize: '12px', fontWeight: 700, padding: '3px 10px', borderRadius: '999px' }}>
-                    {cfg.label}
-                  </span>
-                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>{formatDateTime(alert.created_at)}</span>
-                </div>
-
-                {/* Bold summary line */}
-                <p style={{ fontWeight: 700, color: '#1f2937', fontSize: '16px', marginBottom: restSummary ? '6px' : '0' }}>
-                  {boldSummary}
-                </p>
-                {restSummary && (
-                  <p style={{ color: '#4b5563', fontSize: '15px', lineHeight: '1.6' }}>{restSummary}</p>
-                )}
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => handleAcknowledge(alert.id)}
-                    disabled={acknowledgingId === alert.id}
-                    style={{
-                      padding: '8px 16px', borderRadius: '10px', border: '1px solid #e5e7eb',
-                      background: 'white', color: '#374151', fontSize: '14px', fontWeight: 500,
-                      cursor: 'pointer', minHeight: '40px', opacity: acknowledgingId === alert.id ? 0.5 : 1,
-                    }}
-                  >
-                    {acknowledgingId === alert.id ? 'Acknowledging…' : 'Acknowledge'}
-                  </button>
-                  <a
-                    href="tel:+6500000000"
-                    style={{
-                      padding: '8px 16px', borderRadius: '10px',
-                      background: '#2D6A4F', color: 'white',
-                      fontSize: '14px', fontWeight: 600, textDecoration: 'none',
-                      display: 'inline-flex', alignItems: 'center', gap: '6px', minHeight: '40px',
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                    Call Patient
-                  </a>
-                </div>
-              </div>
-            )
-          })}
-        </section>
-      )}
-
-      {/* Acknowledged alerts */}
-      {acknowledgedAlerts.length > 0 && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Previously Acknowledged</h2>
-          {acknowledgedAlerts.map(alert => {
-            const cfg = SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.info
-            return (
-              <div
-                key={alert.id}
-                style={{
-                  background: '#f9fafb',
-                  borderRadius: '12px',
-                  borderLeft: `3px solid ${cfg.border}`,
-                  padding: '14px 16px',
-                  opacity: 0.7,
-                }}
-              >
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{ background: cfg.labelBg, color: cfg.labelColor, fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px' }}>
-                    {cfg.label}
-                  </span>
-                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>{formatDateTime(alert.created_at)}</span>
-                  <span style={{ color: '#9ca3af', fontSize: '12px', background: '#e5e7eb', padding: '2px 8px', borderRadius: '999px' }}>
-                    ✓ Acknowledged
-                  </span>
-                </div>
-                <p style={{ color: '#6b7280', fontSize: '14px', lineHeight: '1.5' }}>{alert.summary}</p>
-              </div>
-            )
-          })}
-        </section>
-      )}
-
-      {/* Empty state */}
-      {alerts.length === 0 && !isLoading && (
-        <div style={{ textAlign: 'center', padding: '64px 0', background: 'white', borderRadius: '16px' }}>
-          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#52B788" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchAlerts}
+            className="text-[#4894fe] text-sm font-medium px-4 py-2 rounded-[15px] border border-[#4894fe]"
+            style={{ minHeight: '0', minWidth: '0' }}
+          >
+            Refresh
+          </button>
+          <div className="w-[60px] h-[60px] rounded-full bg-[#4894fe] flex items-center justify-center flex-shrink-0">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+              <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
             </svg>
           </div>
-          <p style={{ fontSize: '20px', fontWeight: 600, color: '#374151' }}>No alerts</p>
-          <p style={{ color: '#9ca3af', marginTop: '8px', fontSize: '15px' }}>Everything looks good. You&apos;ll be notified if something needs attention.</p>
         </div>
-      )}
-    </div>
+      </div>
+
+      <div className="flex flex-col gap-5 px-8 md:px-12 pb-8">
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
+            {error}
+          </div>
+        )}
+
+        {/* Active alerts */}
+        {activeAlerts.length > 0 && (
+          <section className="flex flex-col gap-4">
+            <p className="text-[#b4b4b4] text-sm font-semibold uppercase tracking-wider">
+              Active · {activeAlerts.length} alert{activeAlerts.length !== 1 ? 's' : ''}
+            </p>
+            {activeAlerts.map(alert => {
+              const boldSummary = alert.summary.split('.')[0] || alert.summary.slice(0, 80)
+              const restSummary = alert.summary.slice(boldSummary.length).replace(/^[.]\s*/, '').trim()
+              return (
+                <div
+                  key={alert.id}
+                  className="bg-[#4894fe] rounded-[20px] p-6 flex flex-col gap-4"
+                >
+                  {/* Header row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                        <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-white text-lg font-bold">Alert</p>
+                    </div>
+                    <p className="text-white text-sm opacity-70">{formatDateTime(alert.created_at)}</p>
+                  </div>
+
+                  {/* Summary */}
+                  <div>
+                    <p className="text-white text-base font-bold">{boldSummary}</p>
+                    {restSummary && (
+                      <p className="text-white text-base opacity-80 mt-1 leading-relaxed">{restSummary}</p>
+                    )}
+                    <p className="text-white text-sm opacity-60 mt-1 capitalize">{alert.severity} severity</p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleAcknowledge(alert.id)}
+                      disabled={acknowledgingId === alert.id}
+                      className="flex-1 bg-[rgba(255,255,255,0.2)] text-white text-sm font-semibold rounded-[15px] py-3 transition-opacity disabled:opacity-50"
+                      style={{ minHeight: '0', minWidth: '0' }}
+                    >
+                      {acknowledgingId === alert.id ? 'Acknowledging…' : 'Acknowledge'}
+                    </button>
+                    <a
+                      href="tel:+6500000000"
+                      className="flex-1 bg-white text-[#4894fe] text-sm font-semibold rounded-[15px] py-3 flex items-center justify-center gap-2"
+                      style={{ minHeight: '0', minWidth: '0' }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+                      </svg>
+                      Call Patient
+                    </a>
+                  </div>
+                </div>
+              )
+            })}
+          </section>
+        )}
+
+        {/* Acknowledged alerts */}
+        {acknowledgedAlerts.length > 0 && (
+          <section className="flex flex-col gap-3">
+            <p className="text-[#b4b4b4] text-sm font-semibold uppercase tracking-wider">Previously Acknowledged</p>
+            {acknowledgedAlerts.map(alert => (
+              <div
+                key={alert.id}
+                className="bg-[#f5f5f5] rounded-[20px] p-5 flex flex-col gap-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-[#e0e0e0] flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="#8f8f8f">
+                        <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 011.04-.207z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <p className="text-[#464646] text-base font-semibold">Acknowledged</p>
+                  </div>
+                  <p className="text-[#b4b4b4] text-sm">{formatDateTime(alert.created_at)}</p>
+                </div>
+                <p className="text-[#8f8f8f] text-base leading-relaxed">{alert.summary}</p>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* Empty state */}
+        {alerts.length === 0 && !isLoading && (
+          <div className="text-center py-16 bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)]">
+            <div className="w-16 h-16 rounded-full bg-[#eef6ff] flex items-center justify-center mx-auto mb-4">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="#4894fe">
+                <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 011.04-.207z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <p className="text-black text-xl font-bold">No alerts</p>
+            <p className="text-[#b4b4b4] text-base mt-2">Everything looks good right now.</p>
+          </div>
+        )}
+      </div>
+    </main>
   )
 }
