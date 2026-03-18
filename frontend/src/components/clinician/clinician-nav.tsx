@@ -31,32 +31,65 @@ export function ClinicianNav() {
     exact ? pathname === href : pathname.startsWith(href)
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
-      <div
-        className="w-full max-w-[600px] bg-white border-t border-[#e4e4e4] flex items-center justify-around px-4 py-4"
-        style={{ minHeight: '80px' }}
-      >
-        {tabs.map(({ href, label, Icon, exact }) => {
-          const active = isActive(href, exact)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center justify-center"
-              style={{ minHeight: '48px', minWidth: '48px' }}
-            >
-              {active ? (
-                <div className="flex items-center gap-2 bg-[#eef6ff] rounded-[15px] px-4 py-3">
-                  <Icon active />
-                  <span className="text-[#4894fe] font-medium text-base">{label}</span>
-                </div>
-              ) : (
-                <Icon active={false} />
-              )}
-            </Link>
-          )
-        })}
-      </div>
-    </nav>
+    <>
+      {/* Mobile bottom bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+        <div
+          className="w-full max-w-[600px] bg-white border-t border-[#e4e4e4] flex items-center justify-around px-4 py-4"
+          style={{ minHeight: '80px' }}
+        >
+          {tabs.map(({ href, label, Icon, exact }) => {
+            const active = isActive(href, exact)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center justify-center"
+                style={{ minHeight: '48px', minWidth: '48px' }}
+              >
+                {active ? (
+                  <div className="flex items-center gap-2 bg-[#eef6ff] rounded-[15px] px-4 py-3">
+                    <Icon active />
+                    <span className="text-[#4894fe] font-medium text-base">{label}</span>
+                  </div>
+                ) : (
+                  <Icon active={false} />
+                )}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-white border-r border-[#e4e4e4] z-50 flex-col">
+        {/* Header */}
+        <div className="px-6 py-8">
+          <p className="text-[#4894fe] text-xl font-bold">Baymax</p>
+          <p className="text-[#8f8f8f] text-sm mt-1">Clinician View</p>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex flex-col gap-2 px-4 flex-1">
+          {tabs.map(({ href, label, Icon, exact }) => {
+            const active = isActive(href, exact)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={
+                  active
+                    ? 'flex items-center gap-3 bg-[#eef6ff] rounded-[15px] px-4 py-3 text-[#4894fe] font-medium'
+                    : 'flex items-center gap-3 px-4 py-3 text-[#9ca3af]'
+                }
+              >
+                <Icon active={active} />
+                <span className="text-base">{label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
+    </>
   )
 }

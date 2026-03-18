@@ -135,7 +135,7 @@ export default function MedicationsPage() {
 
   if (isLoading) {
     return (
-      <main className="bg-white min-h-screen px-8 pt-16">
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <p className="text-[#b4b4b4] text-lg animate-pulse">Loading medications…</p>
       </main>
     )
@@ -147,14 +147,14 @@ export default function MedicationsPage() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="px-8 pt-16 pb-6">
+      <div className="px-8 md:px-12 pt-12 md:pt-16 pb-6">
         <p className="text-[#8f8f8f] text-lg font-medium">Don&apos;t forget to take your meds!</p>
         <p className="text-black text-2xl font-bold">Medication</p>
       </div>
 
-      <div className="flex flex-col gap-4 px-8 pb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-8 md:px-12 pb-8">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
+          <div className="md:col-span-2 bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
             {error}
           </div>
         )}
@@ -238,7 +238,7 @@ export default function MedicationsPage() {
 
         {/* All done state */}
         {pendingMeds.length === 0 && takenMeds.length > 0 && (
-          <div className="text-center py-8">
+          <div className="md:col-span-2 text-center py-8">
             <p className="text-[#52B788] font-bold text-xl">All medications taken today!</p>
             <p className="text-[#b4b4b4] text-base mt-2">Great job!</p>
           </div>
@@ -246,7 +246,7 @@ export default function MedicationsPage() {
 
         {/* No medications */}
         {pendingMeds.length === 0 && takenMeds.length === 0 && !isLoading && (
-          <div className="text-center py-12">
+          <div className="md:col-span-2 text-center py-12">
             <p className="text-[#b4b4b4] text-lg">No medications scheduled today</p>
           </div>
         )}

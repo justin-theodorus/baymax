@@ -244,7 +244,7 @@ export default function PatientChat() {
       `}</style>
 
       {/* Sticky header */}
-      <div className="sticky top-0 bg-white flex items-center gap-5 px-8 pt-14 pb-4 shadow-[0px_4px_10px_0px_rgba(0,0,0,0.05)] z-10">
+      <div className="sticky top-0 bg-white flex items-center gap-5 px-8 md:px-12 pt-12 md:pt-14 pb-4 shadow-[0px_4px_10px_0px_rgba(0,0,0,0.05)] z-10">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="#4894fe">
           <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423L16.5 15.75l.394 1.183a2.25 2.25 0 001.423 1.423L19.5 18.75l-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
         </svg>
@@ -252,7 +252,7 @@ export default function PatientChat() {
       </div>
 
       {/* Chat messages — scrollable */}
-      <div className="flex-1 overflow-y-auto px-8 py-5 flex flex-col gap-5">
+      <div className="flex-1 overflow-y-auto px-8 md:px-12 py-5 flex flex-col gap-5">
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center gap-5 py-10">
             <p className="text-[#b4b4b4] text-lg">{voiceLabel}</p>
@@ -357,7 +357,7 @@ export default function PatientChat() {
       </div>
 
       {/* Bottom input bar */}
-      <div className="bg-white shadow-[0px_-4px_10px_0px_rgba(0,0,0,0.05)] px-8 py-4">
+      <div className="bg-white shadow-[0px_-4px_10px_0px_rgba(0,0,0,0.05)] px-8 md:px-12 py-4">
         <div className="flex items-center gap-3 bg-[#f2f2f2] rounded-full px-5 py-3">
           <input
             type="text"

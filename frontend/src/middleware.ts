@@ -61,7 +61,7 @@ export async function middleware(request: NextRequest) {
   if (session?.access_token) {
     try {
       const payload = JSON.parse(atob(session.access_token.split('.')[1]))
-      role = payload.app_role as string | undefined
+      role = (payload.app_role ?? payload.role) as string | undefined
     } catch {
       role = undefined
     }

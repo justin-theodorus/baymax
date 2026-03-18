@@ -239,7 +239,7 @@ export default function PatientHome() {
       `}</style>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-16 pb-4">
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
           <p className="text-[#8f8f8f] text-lg font-medium">{getGreeting()}</p>
           <p className="text-black text-2xl font-bold">{patientName ? `${patientName}!` : 'Hello!'}</p>
@@ -251,7 +251,7 @@ export default function PatientHome() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 px-8 pb-8">
+      <div className="flex flex-col gap-6 px-8 md:px-12 pb-8">
         {/* Baymax Card */}
         <div className="bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)] flex flex-col items-center gap-5 p-8">
           {/* Title */}
@@ -319,7 +319,7 @@ export default function PatientHome() {
 
         {/* Medication Cards */}
         {allMeds.length > 0 && (
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pendingMeds.map((med, i) => {
               const isOverdue = med.overdue
               const bgColor = i === 0 ? '#4894fe' : '#464646'

@@ -32,8 +32,8 @@ class Settings(BaseSettings):
     azure_speech_key: str
     azure_speech_region: str = 'southeastasia'
 
-    # Telegram
-    telegram_bot_token: str
+    # Telegram (optional — alerts are skipped if not configured)
+    telegram_bot_token: str = ''
 
     # App
     frontend_origin: str = 'http://localhost:3000'

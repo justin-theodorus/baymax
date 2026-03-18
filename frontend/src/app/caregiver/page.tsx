@@ -45,10 +45,11 @@ export default function CaregiverDashboard() {
       setError('')
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session || cancelled) {
+        if (!session) {
           router.push('/caregiver/login')
           return
         }
+        if (cancelled) return
 
         const token = session.access_token
         setAccessToken(token)
@@ -101,7 +102,7 @@ export default function CaregiverDashboard() {
 
   if (isLoading) {
     return (
-      <main className="bg-white min-h-screen px-8 pt-16">
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-gray-200 rounded-full" />
           <div className="h-40 bg-gray-200 rounded-[20px]" />
@@ -128,7 +129,7 @@ export default function CaregiverDashboard() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-16 pb-4">
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
           <p className="text-[#8f8f8f] text-lg font-medium">{greeting}</p>
           <p className="text-black text-2xl font-bold">{caregiverName ? `${caregiverName}!` : 'Hello!'}</p>
@@ -141,12 +142,12 @@ export default function CaregiverDashboard() {
       </div>
 
       {error && (
-        <div className="mx-8 mb-4 bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
+        <div className="mx-8 md:mx-12 mb-4 bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
           {error}
         </div>
       )}
 
-      <div className="flex flex-col gap-6 px-8 pb-8">
+      <div className="flex flex-col gap-6 px-8 md:px-12 pb-8">
         {/* Status Card */}
         <div className="bg-[#4894fe] rounded-[20px] p-6 flex flex-col gap-5">
           {/* Label row */}

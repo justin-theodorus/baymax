@@ -23,27 +23,179 @@ interface DigestReport {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+// ── Vitals helpers (mirrors clinician report) ─────────────────────────────────
+
+const VITAL_RANGES: Record<string, { min: number; max: number; borderlineBuffer: number; unit: string }> = {
+  blood_glucose: { min: 4, max: 10, borderlineBuffer: 1, unit: 'mmol/L' },
+  blood_pressure_systolic: { min: 90, max: 140, borderlineBuffer: 10, unit: 'mmHg' },
+  blood_pressure_diastolic: { min: 60, max: 90, borderlineBuffer: 8, unit: 'mmHg' },
+  heart_rate: { min: 60, max: 100, borderlineBuffer: 8, unit: 'bpm' },
+  weight: { min: 40, max: 120, borderlineBuffer: 5, unit: 'kg' },
+}
+
+function getVitalStatus(vtype: string, avg: number): 'normal' | 'borderline' | 'abnormal' {
+  const range = VITAL_RANGES[vtype]
+  if (!range) return 'normal'
+  const { min, max, borderlineBuffer } = range
+  if (avg >= min && avg <= max) return 'normal'
+  if (avg >= min - borderlineBuffer && avg <= max + borderlineBuffer) return 'borderline'
+  return 'abnormal'
+}
+
+function statusColor(s: 'normal' | 'borderline' | 'abnormal') {
+  if (s === 'normal') return '#16a34a'
+  if (s === 'borderline') return '#d97706'
+  return '#dc2626'
+}
+function statusBg(s: 'normal' | 'borderline' | 'abnormal') {
+  if (s === 'normal') return '#f0fdf4'
+  if (s === 'borderline') return '#fffbeb'
+  return '#fef2f2'
+}
+function statusLabel(s: 'normal' | 'borderline' | 'abnormal') {
+  if (s === 'normal') return 'In Range'
+  if (s === 'borderline') return 'Borderline'
+  return 'Out of Range'
+}
+
+function VitalGaugeBar({ vtype, avg }: { vtype: string; avg: number }) {
+  const range = VITAL_RANGES[vtype]
+  if (!range || avg === 0) return null
+  const displayMin = Math.min(range.min * 0.7, avg * 0.9)
+  const displayMax = Math.max(range.max * 1.3, avg * 1.1)
+  const totalSpan = displayMax - displayMin
+  const fillPct = Math.min(Math.max(((avg - displayMin) / totalSpan) * 100, 2), 100)
+  const normalStartPct = ((range.min - displayMin) / totalSpan) * 100
+  const normalEndPct = ((range.max - displayMin) / totalSpan) * 100
+  const status = getVitalStatus(vtype, avg)
+  return (
+    <div className="mt-1.5">
+      <div className="relative h-3 rounded-full overflow-hidden" style={{ background: '#e5e7eb' }}>
+        <div className="absolute top-0 h-full opacity-30" style={{ left: `${normalStartPct}%`, width: `${normalEndPct - normalStartPct}%`, background: '#16a34a' }} />
+        <div className="absolute top-0 h-full rounded-full" style={{ width: `${fillPct}%`, background: statusColor(status), opacity: 0.85 }} />
+      </div>
+      <div className="flex justify-between mt-0.5">
+        <span className="text-xs text-gray-400">{displayMin.toFixed(0)}</span>
+        <span className="text-xs" style={{ color: statusColor(status) }}>avg {avg} — {statusLabel(status)}</span>
+        <span className="text-xs text-gray-400">{displayMax.toFixed(0)}</span>
+      </div>
+    </div>
+  )
+}
+
+function parseVitalsSummary(text: string): Record<string, { avg: number; min: number; max: number; count: number; unit: string }> {
+  const buckets: Record<string, number[]> = {}
+  const units: Record<string, string> = {}
+  text.split(';').forEach(part => {
+    const m = part.trim().match(/^([\w_]+):\s*([\d.]+)\s*(.*)$/)
+    if (!m) return
+    const [, key, val, unit] = m
+    if (!buckets[key]) buckets[key] = []
+    buckets[key].push(parseFloat(val))
+    if (unit.trim()) units[key] = unit.trim()
+  })
+  const result: Record<string, { avg: number; min: number; max: number; count: number; unit: string }> = {}
+  for (const [key, vals] of Object.entries(buckets)) {
+    const avg = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+    result[key] = { avg, min: Math.min(...vals), max: Math.max(...vals), count: vals.length, unit: units[key] ?? VITAL_RANGES[key]?.unit ?? '' }
+  }
+  return result
+}
+
+function VitalsBlock({ vitalsText }: { vitalsText: string }) {
+  const readings = parseVitalsSummary(vitalsText)
+  const priorityOrder = ['blood_glucose', 'blood_pressure_systolic', 'blood_pressure_diastolic', 'heart_rate', 'weight']
+  const entries = [
+    ...priorityOrder.filter(k => k in readings).map(k => [k, readings[k]] as const),
+    ...Object.entries(readings).filter(([k]) => !priorityOrder.includes(k)),
+  ]
+  if (!entries.length) return null
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {entries.map(([vtype, data]) => {
+        const status = getVitalStatus(vtype, data.avg)
+        const label = vtype.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        return (
+          <div key={vtype} className="rounded-xl p-3 border" style={{ background: statusBg(status), borderColor: statusColor(status) + '33' }}>
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-medium text-gray-600">{label}</p>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ color: statusColor(status), background: statusColor(status) + '1A' }}>
+                {statusLabel(status)}
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-2xl font-bold" style={{ color: statusColor(status) }}>{data.avg > 0 ? data.avg : '—'}</span>
+              <span className="text-xs text-gray-500">{data.unit}</span>
+            </div>
+            {data.avg > 0 && <VitalGaugeBar vtype={vtype} avg={data.avg} />}
+            {data.count > 1 && <p className="text-xs text-gray-400 mt-1">{data.min}–{data.max} range · {data.count} readings</p>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Date formatting ───────────────────────────────────────────────────────────
+
 function formatDateShort(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-SG', {
     month: 'short', day: 'numeric', year: 'numeric',
   })
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#+\s*/gm, '')           // headings
+    .replace(/\*\*(.*?)\*\*/g, '$1')   // bold
+    .replace(/\*(.*?)\*/g, '$1')       // italic
+    .replace(/^[•\-*]\s*/gm, '')       // bullet chars
+    .trim()
+}
+
+interface DigestItem {
+  label: string
+  body: string
+}
+
+function parseDigestItems(text: string | undefined | null): DigestItem[] {
+  if (!text) return []
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  const items: DigestItem[] = []
+
+  for (const line of lines) {
+    // Skip pure heading lines (# Title) and date-range lines like "*Week of 8–15 March 2026*"
+    if (/^#+\s/.test(line)) continue
+    if (/week of/i.test(line)) continue
+
+    // Strip bullet prefix
+    const stripped = line.replace(/^[•\-*]\s*/, '')
+
+    // If line contains "**Label**: body" pattern, split it
+    const match = stripped.match(/^\*{0,2}([^*:]+)\*{0,2}:\s*(.+)/)
+    if (match) {
+      items.push({ label: match[1].trim(), body: match[2].trim() })
+    } else {
+      // Plain line — use empty label
+      const clean = stripMarkdown(stripped)
+      if (clean) items.push({ label: '', body: clean })
+    }
+  }
+  return items
+}
+
 function renderDigestText(text: string | undefined | null) {
-  if (!text) return null
-  const lines = text.split('\n').filter(l => l.trim())
-  return lines.map((line, i) => {
-    const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-') || line.trim().startsWith('*')
-    return (
-      <li
-        key={i}
-        className={`text-[#464646] leading-relaxed ${isBullet ? 'list-disc ml-4' : 'list-none'}`}
-        style={{ fontSize: '15px' }}
-      >
-        {isBullet ? line.replace(/^[•\-*]\s*/, '') : line}
-      </li>
-    )
-  })
+  const items = parseDigestItems(text)
+  if (!items.length) return null
+
+  return items.map((item, i) => (
+    <div key={i} className="bg-white rounded-[15px] px-4 py-3 flex flex-col gap-1">
+      {item.label && (
+        <p className="text-[#464646] text-sm font-semibold">{item.label}</p>
+      )}
+      <p className="text-[#8f8f8f] text-sm leading-relaxed">{item.body}</p>
+    </div>
+  ))
 }
 
 export default function DigestPage() {
@@ -145,7 +297,7 @@ export default function DigestPage() {
 
   if (isLoading) {
     return (
-      <main className="bg-white min-h-screen px-8 pt-16">
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-gray-200 rounded-full" />
           <div className="h-40 bg-gray-200 rounded-[20px]" />
@@ -157,12 +309,12 @@ export default function DigestPage() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="px-8 pt-16 pb-6">
+      <div className="px-8 md:px-12 pt-12 md:pt-16 pb-6">
         <p className="text-black text-2xl font-bold">Weekly Digest</p>
         <p className="text-[#8f8f8f] text-base mt-1">AI-generated health summary for your loved one</p>
       </div>
 
-      <div className="flex flex-col gap-5 px-8 pb-8">
+      <div className="flex flex-col gap-5 px-8 md:px-12 pb-8">
         {/* Generate button */}
         <button
           onClick={handleGenerate}
@@ -228,9 +380,9 @@ export default function DigestPage() {
 
               {/* Vitals section */}
               {digest.summary.vitals_summary && (
-                <div className="bg-white rounded-[15px] px-4 py-3">
-                  <p className="text-[#8f8f8f] text-xs font-semibold uppercase tracking-wider mb-2">Vitals</p>
-                  <p className="text-[#464646] text-sm leading-relaxed">{digest.summary.vitals_summary}</p>
+                <div className="bg-white rounded-[15px] px-4 py-4">
+                  <p className="text-[#8f8f8f] text-xs font-semibold uppercase tracking-wider mb-3">Vitals at a Glance</p>
+                  <VitalsBlock vitalsText={digest.summary.vitals_summary} />
                 </div>
               )}
             </div>
@@ -238,9 +390,9 @@ export default function DigestPage() {
             {/* Summary card */}
             <div className="bg-[#f5f5f5] rounded-[20px] p-6">
               <p className="text-black text-base font-bold mb-3">Summary</p>
-              <ul className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {renderDigestText(digest.summary.digest_text)}
-              </ul>
+              </div>
             </div>
 
             <p className="text-[#b4b4b4] text-xs text-center">

@@ -117,7 +117,7 @@ export default function AlertsPage() {
 
   if (isLoading) {
     return (
-      <main className="bg-white min-h-screen px-8 pt-16">
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-200 rounded-[20px]" />)}
         </div>
@@ -128,7 +128,7 @@ export default function AlertsPage() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-16 pb-4">
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
           <p className="text-[#8f8f8f] text-lg font-medium">{getGreeting()}</p>
           <p className="text-black text-2xl font-bold">{caregiverName ? `${caregiverName}!` : 'Hello!'}</p>
@@ -149,7 +149,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-5 px-8 pb-8">
+      <div className="flex flex-col gap-5 px-8 md:px-12 pb-8">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
             {error}

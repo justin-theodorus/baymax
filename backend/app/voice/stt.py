@@ -34,7 +34,8 @@ def transcribe_audio(audio_bytes: bytes) -> dict:
         smart_format=True,
     )
 
-    payload = {"buffer": audio_bytes}
+    # mimetype must be specified so Deepgram knows how to decode webm/opus from the browser
+    payload = {"buffer": audio_bytes, "mimetype": "audio/webm;codecs=opus"}
     response = client.listen.prerecorded.v("1").transcribe_file(payload, options)
 
     channels = response["results"]["channels"]

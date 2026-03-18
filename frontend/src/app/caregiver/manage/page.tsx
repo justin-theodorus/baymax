@@ -186,7 +186,7 @@ export default function ManagePage() {
 
   if (isLoading) {
     return (
-      <main className="bg-white min-h-screen px-8 pt-16">
+      <main className="bg-white min-h-screen px-8 md:px-12 pt-12 md:pt-16">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-gray-200 rounded-full" />
           <div className="h-24 bg-gray-200 rounded-[20px]" />
@@ -199,12 +199,12 @@ export default function ManagePage() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="px-8 pt-16 pb-6">
+      <div className="px-8 md:px-12 pt-12 md:pt-16 pb-6">
         <p className="text-[#8f8f8f] text-lg font-medium">{patientName}</p>
         <p className="text-black text-2xl font-bold">Manage Medication</p>
       </div>
 
-      <div className="flex flex-col gap-4 px-8 pb-8">
+      <div className="flex flex-col gap-4 px-8 md:px-12 pb-8">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-[20px] px-5 py-4 text-red-700 text-base">
             {error}

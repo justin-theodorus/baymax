@@ -48,7 +48,7 @@ export default async function ClinicianHome() {
   return (
     <main className="bg-white min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-16 pb-4">
+      <div className="flex items-center justify-between px-8 md:px-12 pt-12 md:pt-16 pb-4">
         <div>
           <p className="text-[#8f8f8f] text-lg font-medium">Good Afternoon</p>
           <p className="text-black text-2xl font-bold">Doctor!</p>
@@ -60,7 +60,7 @@ export default async function ClinicianHome() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 px-8 pb-8">
+      <div className="flex flex-col gap-6 px-8 md:px-12 pb-8">
         {/* My Patients card */}
         <div className="bg-white rounded-[20px] shadow-[0px_0px_100px_0px_rgba(0,0,0,0.05)] flex flex-col gap-5 p-6">
           <div className="flex items-center gap-3">
@@ -91,7 +91,7 @@ export default async function ClinicianHome() {
               <p className="text-[#b4b4b4] text-sm mt-1">Contact your administrator to have patients linked.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {patients.map(patient => (
                 <PatientCard key={patient.id} patient={patient} />
               ))}
